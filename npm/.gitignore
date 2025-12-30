@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+packages/*/dist/
+
+# Native binaries (downloaded/copied, not checked in)
+packages/darwin-arm64/whisper.node
+packages/darwin-x64/whisper.node
+packages/linux-x64/whisper.node
+packages/win32-x64/whisper.node
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test artifacts
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

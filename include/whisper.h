@@ -118,6 +118,10 @@ extern "C" {
         bool  flash_attn;
         int   gpu_device;  // CUDA device
 
+        // Core ML support (macOS only)
+        // When true and Core ML is available, uses Apple Neural Engine for encoder
+        bool  use_coreml;
+
         // [EXPERIMENTAL] Token-level timestamps with DTW
         bool dtw_token_timestamps;
         enum whisper_alignment_heads_preset dtw_aheads_preset;

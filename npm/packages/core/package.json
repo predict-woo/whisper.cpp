@@ -1,0 +1,51 @@
+{
+  "name": "@whisper-cpp-node/core",
+  "version": "0.1.0",
+  "description": "Node.js bindings for whisper.cpp - fast speech-to-text on Apple Silicon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/niconicoye/whisper.cpp",
+    "directory": "npm/packages/core"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "pnpm build"
+  },
+  "optionalDependencies": {
+    "@whisper-cpp-node/darwin-arm64": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "whisper",
+    "whisper.cpp",
+    "speech-to-text",
+    "transcription",
+    "audio",
+    "asr",
+    "apple-silicon",
+    "coreml",
+    "metal"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

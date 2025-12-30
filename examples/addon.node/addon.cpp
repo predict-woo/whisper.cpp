@@ -113,6 +113,7 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
     cparams.use_gpu    = get_bool(options, "use_gpu", true);
     cparams.flash_attn = get_bool(options, "flash_attn", false);
     cparams.gpu_device = get_int32(options, "gpu_device", 0);
+    cparams.use_coreml = get_bool(options, "use_coreml", false);
 
     // DTW parameters
     if (options.Has("dtw") && options.Get("dtw").IsString()) {

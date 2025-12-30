@@ -155,6 +155,7 @@ new WhisperContext(options)
 | `use_gpu` | boolean | `true` | Enable GPU acceleration |
 | `flash_attn` | boolean | `false` | Enable Flash Attention |
 | `gpu_device` | number | `0` | GPU device index |
+| `use_coreml` | boolean | `false` | Enable Core ML acceleration (macOS only) |
 | `dtw` | string | `undefined` | DTW alignment preset (e.g., 'base.en', 'small', 'large.v3') |
 | `no_prints` | boolean | `false` | Suppress whisper.cpp log output |
 
@@ -168,6 +169,37 @@ const ctx = new addon.WhisperContext({
     no_prints: true
 });
 ```
+
+#### Core ML Acceleration (macOS)
+
+On macOS, you can enable Core ML to use the Apple Neural Engine (ANE) for encoder inference, which can provide significant speedups (3x or more on Apple Silicon).
+
+**Prerequisites:**
+1. Generate a Core ML model for your Whisper model:
+   ```bash
+   pip install ane_transformers openai-whisper coremltools
+   ./models/generate-coreml-model.sh base.en
+   ```
+
+2. The Core ML model must be at the same location as the GGML model with `-encoder.mlmodelc` suffix:
+   ```
+   models/ggml-base.en.bin            # GGML model
+   models/ggml-base.en-encoder.mlmodelc/  # Core ML model (folder)
+   ```
+
+**Usage:**
+```javascript
+const ctx = new addon.WhisperContext({
+    model: './models/ggml-base.en.bin',
+    use_coreml: true,  // Enable Core ML
+    use_gpu: true
+});
+```
+
+**Notes:**
+- The first run may be slow as the ANE compiles the Core ML model
+- If the Core ML model is not found, it will fall back to regular inference
+- Core ML is only used for the encoder; the decoder runs normally
 
 #### Methods
 

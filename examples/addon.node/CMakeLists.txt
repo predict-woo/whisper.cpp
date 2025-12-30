@@ -57,6 +57,42 @@ if(ADDON_STANDALONE)
     endif()
 
     # ========================================================================
+    # Core ML support (macOS only) - always enabled for runtime switching
+    # ========================================================================
+    if(APPLE)
+        find_library(FOUNDATION_FRAMEWORK Foundation)
+        find_library(COREML_FRAMEWORK CoreML)
+
+        if(COREML_FRAMEWORK)
+            message(STATUS "CoreML framework found - enabling Core ML support")
+            set(WHISPER_COREML_ENABLED ON)
+
+            # Build whisper.coreml static library
+            set(COREML_SOURCES
+                ${WHISPER_ROOT}/src/coreml/whisper-compat.m
+                ${WHISPER_ROOT}/src/coreml/whisper-encoder.mm
+                ${WHISPER_ROOT}/src/coreml/whisper-encoder-impl.m
+            )
+
+            add_library(whisper_coreml STATIC ${COREML_SOURCES})
+            target_include_directories(whisper_coreml PUBLIC
+                ${WHISPER_ROOT}/src
+                ${WHISPER_ROOT}/src/coreml
+            )
+            target_link_libraries(whisper_coreml PRIVATE ${FOUNDATION_FRAMEWORK} ${COREML_FRAMEWORK})
+            set_target_properties(whisper_coreml PROPERTIES
+                COMPILE_FLAGS "-fobjc-arc"
+                XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+            )
+        else()
+            message(STATUS "CoreML framework not found - Core ML support disabled")
+            set(WHISPER_COREML_ENABLED OFF)
+        endif()
+    else()
+        set(WHISPER_COREML_ENABLED OFF)
+    endif()
+
+    # ========================================================================
     # Build whisper library from source
     # ========================================================================
     set(WHISPER_SOURCES
@@ -81,6 +117,13 @@ if(ADDON_STANDALONE)
     target_compile_features(whisper_static PUBLIC cxx_std_11)
     target_compile_definitions(whisper_static PRIVATE WHISPER_VERSION="${WHISPER_VERSION}")
     target_link_libraries(whisper_static PUBLIC ggml)
+
+    # Add Core ML support to whisper if available
+    if(WHISPER_COREML_ENABLED)
+        target_compile_definitions(whisper_static PRIVATE WHISPER_USE_COREML)
+        target_compile_definitions(whisper_static PRIVATE WHISPER_COREML_ALLOW_FALLBACK)
+        target_link_libraries(whisper_static PRIVATE whisper_coreml)
+    endif()
 
     find_package(Threads REQUIRED)
     target_link_libraries(whisper_static PUBLIC Threads::Threads)
