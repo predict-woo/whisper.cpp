@@ -1,6 +1,6 @@
 {
   "name": "@whisper-cpp-node/core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node.js bindings for whisper.cpp - fast speech-to-text on Apple Silicon",
   "license": "MIT",
   "repository": {
@@ -25,7 +25,7 @@
     "prepublishOnly": "pnpm build"
   },
   "optionalDependencies": {
-    "@whisper-cpp-node/darwin-arm64": "0.1.0"
+    "@whisper-cpp-node/darwin-arm64": "0.1.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
