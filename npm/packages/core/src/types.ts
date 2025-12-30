@@ -19,48 +19,142 @@ export interface WhisperContextOptions {
 }
 
 /**
- * Options for transcription
+ * Base transcription options (shared between file and buffer input)
  */
-export interface TranscribeOptions {
-  /** Path to the audio file */
-  fname_inp: string;
+export interface TranscribeOptionsBase {
+  // === Language ===
   /** Language code (e.g., 'en', 'zh', 'auto') */
   language?: string;
   /** Translate to English */
   translate?: boolean;
-  /** Number of threads to use */
-  n_threads?: number;
-  /** Number of processors */
-  n_processors?: number;
-  /** Disable timestamps in output */
-  no_timestamps?: boolean;
   /** Detect language automatically */
   detect_language?: boolean;
+
+  // === Threading ===
+  /** Number of threads to use */
+  n_threads?: number;
+  /** Number of processors for parallel processing */
+  n_processors?: number;
+
+  // === Audio Processing ===
+  /** Start offset in milliseconds */
+  offset_ms?: number;
+  /** Duration to process in milliseconds (0 = all) */
+  duration_ms?: number;
+  /** Audio context size */
+  audio_ctx?: number;
+
+  // === Output Control ===
+  /** Disable timestamps in output */
+  no_timestamps?: boolean;
   /** Single segment mode */
   single_segment?: boolean;
-  /** Maximum segment length (0 = no limit) */
+  /** Maximum segment length in characters (0 = no limit) */
   max_len?: number;
   /** Maximum tokens per segment (0 = no limit) */
   max_tokens?: number;
   /** Maximum context size (-1 = default) */
   max_context?: number;
-  /** Temperature for sampling */
+  /** Split segments on word boundaries */
+  split_on_word?: boolean;
+  /** Include token-level timestamps */
+  token_timestamps?: boolean;
+  /** Word timestamp threshold */
+  word_thold?: number;
+  /** Use comma in timestamp format (default: true) */
+  comma_in_time?: boolean;
+
+  // === Sampling ===
+  /** Temperature for sampling (0.0 = greedy) */
   temperature?: number;
   /** Temperature increment for fallback */
   temperature_inc?: number;
-  /** Best of N sampling */
+  /** Best of N sampling candidates */
   best_of?: number;
-  /** Beam size (-1 = greedy) */
+  /** Beam size for beam search (-1 = greedy) */
   beam_size?: number;
-  /** Entropy threshold */
+  /** Disable temperature fallback */
+  no_fallback?: boolean;
+
+  // === Thresholds ===
+  /** Entropy threshold for fallback */
   entropy_thold?: number;
   /** Log probability threshold */
   logprob_thold?: number;
-  /** No speech threshold */
+  /** No speech probability threshold */
   no_speech_thold?: number;
-  /** Initial prompt text */
+
+  // === Context ===
+  /** Initial prompt text for context */
   prompt?: string;
+  /** Don't use previous context */
+  no_context?: boolean;
+  /** Suppress blank outputs */
+  suppress_blank?: boolean;
+  /** Suppress non-speech tokens */
+  suppress_nst?: boolean;
+
+  // === Diarization ===
+  /** Enable speaker diarization */
+  diarize?: boolean;
+  /** Enable tinydiarize for speaker turn detection */
+  tinydiarize?: boolean;
+
+  // === Debug/Print ===
+  /** Print special tokens */
+  print_special?: boolean;
+  /** Print progress */
+  print_progress?: boolean;
+  /** Print realtime output */
+  print_realtime?: boolean;
+  /** Print timestamps */
+  print_timestamps?: boolean;
+
+  // === VAD (Voice Activity Detection) ===
+  /** Enable VAD preprocessing */
+  vad?: boolean;
+  /** Path to VAD model */
+  vad_model?: string;
+  /** VAD speech detection threshold (0.0-1.0) */
+  vad_threshold?: number;
+  /** Minimum speech duration in milliseconds */
+  vad_min_speech_duration_ms?: number;
+  /** Minimum silence duration in milliseconds */
+  vad_min_silence_duration_ms?: number;
+  /** Maximum speech duration in seconds */
+  vad_max_speech_duration_s?: number;
+  /** Speech padding in milliseconds */
+  vad_speech_pad_ms?: number;
+  /** VAD samples overlap ratio */
+  vad_samples_overlap?: number;
+
+  // === Callbacks ===
+  /** Progress callback function (progress: 0-100) */
+  progress_callback?: (progress: number) => void;
 }
+
+/**
+ * Transcription options with file input
+ */
+export interface TranscribeOptionsFile extends TranscribeOptionsBase {
+  /** Path to the audio file */
+  fname_inp: string;
+  pcmf32?: never;
+}
+
+/**
+ * Transcription options with PCM buffer input
+ */
+export interface TranscribeOptionsBuffer extends TranscribeOptionsBase {
+  /** Raw PCM audio samples (16kHz, mono, float32, values -1.0 to 1.0) */
+  pcmf32: Float32Array;
+  fname_inp?: never;
+}
+
+/**
+ * Options for transcription - either file path or PCM buffer
+ */
+export type TranscribeOptions = TranscribeOptionsFile | TranscribeOptionsBuffer;
 
 /**
  * Transcription result segment (tuple format)
