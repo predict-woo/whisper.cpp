@@ -5,11 +5,15 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/niconicoye/whisper.cpp",
+    "url": "https://github.com/predict-woo/whisper.cpp",
     "directory": "npm/packages/darwin-arm64"
   },
-  "os": ["darwin"],
-  "cpu": ["arm64"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
   "main": "whisper.node",
   "files": [
     "whisper.node"

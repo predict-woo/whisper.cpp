@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/niconicoye/whisper.cpp",
+    "url": "https://github.com/predict-woo/whisper.cpp",
     "directory": "npm/packages/core"
   },
   "main": "dist/index.js",
