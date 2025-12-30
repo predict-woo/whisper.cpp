@@ -890,12 +890,185 @@ Napi::Value LegacyWhisper(const Napi::CallbackInfo& info) {
 }
 
 // ============================================================================
+// VadContext - Streaming VAD context wrapper using ObjectWrap
+// ============================================================================
+
+class VadContext : public Napi::ObjectWrap<VadContext> {
+public:
+    static Napi::Object Init(Napi::Env env, Napi::Object exports);
+    VadContext(const Napi::CallbackInfo& info);
+    ~VadContext();
+
+    bool IsValid() const { return vctx_ != nullptr; }
+
+private:
+    static Napi::FunctionReference constructor;
+
+    // Methods
+    Napi::Value Free(const Napi::CallbackInfo& info);
+    Napi::Value Reset(const Napi::CallbackInfo& info);
+    Napi::Value Process(const Napi::CallbackInfo& info);
+    Napi::Value GetWindowSamples(const Napi::CallbackInfo& info);
+    Napi::Value GetSampleRate(const Napi::CallbackInfo& info);
+
+    whisper_vad_context* vctx_ = nullptr;
+    std::mutex mutex_;
+    float threshold_ = 0.5f;
+};
+
+Napi::FunctionReference VadContext::constructor;
+
+Napi::Object VadContext::Init(Napi::Env env, Napi::Object exports) {
+    Napi::Function func = DefineClass(env, "VadContext", {
+        InstanceMethod("free", &VadContext::Free),
+        InstanceMethod("reset", &VadContext::Reset),
+        InstanceMethod("process", &VadContext::Process),
+        InstanceMethod("getWindowSamples", &VadContext::GetWindowSamples),
+        InstanceMethod("getSampleRate", &VadContext::GetSampleRate),
+    });
+
+    constructor = Napi::Persistent(func);
+    constructor.SuppressDestruct();
+
+    exports.Set("VadContext", func);
+    return exports;
+}
+
+VadContext::VadContext(const Napi::CallbackInfo& info)
+    : Napi::ObjectWrap<VadContext>(info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        Napi::TypeError::New(env, "Expected options object").ThrowAsJavaScriptException();
+        return;
+    }
+
+    Napi::Object options = info[0].As<Napi::Object>();
+
+    // Required: model path
+    if (!options.Has("model") || !options.Get("model").IsString()) {
+        Napi::TypeError::New(env, "model path is required").ThrowAsJavaScriptException();
+        return;
+    }
+    std::string model_path = options.Get("model").As<Napi::String>();
+
+    // Optional parameters
+    threshold_ = get_float(options, "threshold", 0.5f);
+
+    // Context parameters
+    struct whisper_vad_context_params vparams = whisper_vad_default_context_params();
+    vparams.n_threads = get_int32(options, "n_threads", 4);
+    vparams.use_gpu   = get_bool(options, "use_gpu", false);
+    vparams.gpu_device = get_int32(options, "gpu_device", 0);
+
+    // Suppress logging if requested
+    if (get_bool(options, "no_prints", false)) {
+        whisper_log_set(cb_log_disable, NULL);
+    }
+
+    // Load the VAD model
+    vctx_ = whisper_vad_init_from_file_with_params(model_path.c_str(), vparams);
+
+    if (vctx_ == nullptr) {
+        Napi::Error::New(env, "Failed to initialize VAD context from model: " + model_path)
+            .ThrowAsJavaScriptException();
+        return;
+    }
+}
+
+VadContext::~VadContext() {
+    if (vctx_ != nullptr) {
+        whisper_vad_free(vctx_);
+        vctx_ = nullptr;
+    }
+}
+
+Napi::Value VadContext::Free(const Napi::CallbackInfo& info) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (vctx_ != nullptr) {
+        whisper_vad_free(vctx_);
+        vctx_ = nullptr;
+    }
+    return info.Env().Undefined();
+}
+
+Napi::Value VadContext::Reset(const Napi::CallbackInfo& info) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (vctx_ == nullptr) {
+        Napi::Error::New(info.Env(), "VadContext has been freed")
+            .ThrowAsJavaScriptException();
+        return info.Env().Undefined();
+    }
+
+    // Reset the LSTM hidden/cell states using the new streaming API
+    whisper_vad_reset_state(vctx_);
+
+    return info.Env().Undefined();
+}
+
+Napi::Value VadContext::Process(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (vctx_ == nullptr) {
+        Napi::Error::New(env, "VadContext has been freed")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Expect a Float32Array of audio samples
+    if (info.Length() < 1 || !info[0].IsTypedArray()) {
+        Napi::TypeError::New(env, "Expected Float32Array of audio samples")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Napi::Float32Array samples_arr = info[0].As<Napi::Float32Array>();
+    size_t n_samples = samples_arr.ElementLength();
+
+    // Copy samples to vector
+    std::vector<float> samples(n_samples);
+    for (size_t i = 0; i < n_samples; i++) {
+        samples[i] = samples_arr[i];
+    }
+
+    // Use the streaming API - process single frame without resetting LSTM state
+    // This allows for true streaming VAD where state persists across calls
+    float prob = whisper_vad_detect_speech_single_frame(vctx_, samples.data(), n_samples);
+
+    if (prob < 0.0f) {
+        Napi::Error::New(env, "Failed to process audio samples")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    // Return single probability value
+    return Napi::Number::New(env, prob);
+}
+
+Napi::Value VadContext::GetWindowSamples(const Napi::CallbackInfo& info) {
+    if (vctx_ == nullptr) {
+        return Napi::Number::New(info.Env(), 0);
+    }
+    // Use the new API to get the actual window size from the context
+    return Napi::Number::New(info.Env(), whisper_vad_n_window(vctx_));
+}
+
+Napi::Value VadContext::GetSampleRate(const Napi::CallbackInfo& info) {
+    // Whisper uses 16kHz sample rate
+    return Napi::Number::New(info.Env(), WHISPER_SAMPLE_RATE);
+}
+
+// ============================================================================
 // Module initialization
 // ============================================================================
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Initialize WhisperContext class
     WhisperContext::Init(env, exports);
+
+    // Initialize VadContext class
+    VadContext::Init(env, exports);
 
     // Export transcribe function
     exports.Set("transcribe", Napi::Function::New(env, Transcribe));

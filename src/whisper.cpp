@@ -5165,6 +5165,63 @@ bool whisper_vad_detect_speech(
     return true;
 }
 
+void whisper_vad_reset_state(struct whisper_vad_context * vctx) {
+    if (vctx && vctx->buffer) {
+        ggml_backend_buffer_clear(vctx->buffer, 0);
+    }
+}
+
+float whisper_vad_detect_speech_single_frame(
+        struct whisper_vad_context * vctx,
+        const float * samples,
+        int n_samples) {
+    // This function processes a single frame (n_window samples) without resetting LSTM state.
+    // Useful for real-time streaming VAD where state needs to persist across calls.
+
+    if (!vctx || !samples || n_samples <= 0) {
+        return -1.0f;
+    }
+
+    auto & sched = vctx->sched.sched;
+
+    ggml_cgraph * gf = whisper_vad_build_graph(*vctx);
+
+    if (!ggml_backend_sched_alloc_graph(sched, gf)) {
+        WHISPER_LOG_ERROR("%s: failed to allocate the compute buffer\n", __func__);
+        return -1.0f;
+    }
+
+    struct ggml_tensor * frame = ggml_graph_get_tensor(gf, "frame");
+    struct ggml_tensor * prob  = ggml_graph_get_tensor(gf, "prob");
+
+    // Prepare the window - pad with zeros if needed
+    std::vector<float> window(vctx->n_window, 0.0f);
+    const int samples_to_copy = std::min(n_samples, vctx->n_window);
+    std::copy(samples, samples + samples_to_copy, window.begin());
+
+    // Set the frame tensor data
+    ggml_backend_tensor_set(frame, window.data(), 0, ggml_nelements(frame) * sizeof(float));
+
+    // Compute without resetting scheduler
+    if (!ggml_graph_compute_helper(sched, gf, vctx->n_threads, false)) {
+        WHISPER_LOG_ERROR("%s: failed to compute VAD graph\n", __func__);
+        ggml_backend_sched_reset(sched);
+        return -1.0f;
+    }
+
+    // Get the probability
+    float speech_prob = 0.0f;
+    ggml_backend_tensor_get(prob, &speech_prob, 0, sizeof(float));
+
+    ggml_backend_sched_reset(sched);
+
+    return speech_prob;
+}
+
+int whisper_vad_n_window(struct whisper_vad_context * vctx) {
+    return vctx ? vctx->n_window : 0;
+}
+
 int whisper_vad_segments_n_segments(struct whisper_vad_segments * segments) {
     return segments->data.size();
 }
