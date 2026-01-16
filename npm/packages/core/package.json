@@ -1,7 +1,7 @@
 {
   "name": "@whisper-cpp-node/core",
-  "version": "0.1.2",
-  "description": "Node.js bindings for whisper.cpp - fast speech-to-text with native addons",
+  "version": "0.2.0",
+  "description": "Node.js bindings for whisper.cpp - fast speech-to-text with GPU acceleration",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -26,7 +26,7 @@
   },
   "optionalDependencies": {
     "@whisper-cpp-node/darwin-arm64": "0.1.1",
-    "@whisper-cpp-node/win32-x64": "0.1.1"
+    "@whisper-cpp-node/win32-x64": "0.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -45,7 +45,11 @@
     "apple-silicon",
     "coreml",
     "metal",
-    "windows"
+    "windows",
+    "vulkan",
+    "openvino",
+    "gpu",
+    "intel"
   ],
   "publishConfig": {
     "access": "public"
