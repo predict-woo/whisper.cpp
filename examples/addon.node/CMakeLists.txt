@@ -10,6 +10,25 @@ project(whisper-addon)
 set(TARGET addon.node)
 
 # ============================================================================
+# Build options for GPU backends
+# ============================================================================
+option(ADDON_VULKAN   "Enable Vulkan GPU support (Windows/Linux)"  OFF)
+option(ADDON_OPENVINO "Enable OpenVINO encoder support (Intel)"    OFF)
+
+# Auto-enable Vulkan on Windows if not explicitly set
+if(WIN32 AND NOT DEFINED ADDON_VULKAN)
+    set(ADDON_VULKAN ON)
+endif()
+
+# ============================================================================
+# MSVC UTF-8 encoding fix (must be set early, before adding subdirectories)
+# whisper.cpp contains Unicode characters that MSVC can't handle without this
+# ============================================================================
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
+# ============================================================================
 # Base settings for cmake-js
 # ============================================================================
 add_definitions(-DNAPI_VERSION=4)
@@ -50,6 +69,14 @@ if(ADDON_STANDALONE)
     get_filename_component(WHISPER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
     message(STATUS "Whisper root: ${WHISPER_ROOT}")
+
+    # ========================================================================
+    # Configure ggml GPU backends before adding subdirectory
+    # ========================================================================
+    if(ADDON_VULKAN)
+        set(GGML_VULKAN ON CACHE BOOL "Enable Vulkan" FORCE)
+        message(STATUS "Vulkan GPU support: ENABLED")
+    endif()
 
     # Add ggml subdirectory
     if(NOT TARGET ggml)
@@ -93,6 +120,34 @@ if(ADDON_STANDALONE)
     endif()
 
     # ========================================================================
+    # OpenVINO support (Intel CPUs/GPUs)
+    # ========================================================================
+    set(WHISPER_OPENVINO_ENABLED OFF)
+    if(ADDON_OPENVINO)
+        find_package(OpenVINO COMPONENTS Runtime)
+        if(OpenVINO_FOUND)
+            message(STATUS "OpenVINO found - enabling OpenVINO encoder support")
+            set(WHISPER_OPENVINO_ENABLED ON)
+
+            # Build whisper.openvino static library
+            set(OPENVINO_SOURCES
+                ${WHISPER_ROOT}/src/openvino/whisper-openvino-encoder.cpp
+            )
+
+            add_library(whisper_openvino STATIC ${OPENVINO_SOURCES})
+            target_include_directories(whisper_openvino PUBLIC
+                ${WHISPER_ROOT}/src
+                ${WHISPER_ROOT}/src/openvino
+                ${WHISPER_ROOT}/ggml/include
+            )
+            target_link_libraries(whisper_openvino PRIVATE openvino::runtime)
+            set_target_properties(whisper_openvino PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        else()
+            message(WARNING "OpenVINO requested but not found - OpenVINO support disabled")
+        endif()
+    endif()
+
+    # ========================================================================
     # Build whisper library from source
     # ========================================================================
     set(WHISPER_SOURCES
@@ -123,6 +178,12 @@ if(ADDON_STANDALONE)
         target_compile_definitions(whisper_static PRIVATE WHISPER_USE_COREML)
         target_compile_definitions(whisper_static PRIVATE WHISPER_COREML_ALLOW_FALLBACK)
         target_link_libraries(whisper_static PRIVATE whisper_coreml)
+    endif()
+
+    # Add OpenVINO support to whisper if available
+    if(WHISPER_OPENVINO_ENABLED)
+        target_compile_definitions(whisper_static PRIVATE WHISPER_USE_OPENVINO)
+        target_link_libraries(whisper_static PRIVATE whisper_openvino)
     endif()
 
     find_package(Threads REQUIRED)
@@ -174,6 +235,11 @@ if(ADDON_STANDALONE)
         ${WHISPER_ROOT}/include
         ${WHISPER_ROOT}/src
     )
+
+    # Pass OpenVINO enabled flag to addon
+    if(WHISPER_OPENVINO_ENABLED)
+        target_compile_definitions(${TARGET} PRIVATE WHISPER_USE_OPENVINO)
+    endif()
 endif()
 
 target_link_libraries(${TARGET}

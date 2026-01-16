@@ -148,6 +148,38 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
             .ThrowAsJavaScriptException();
         return;
     }
+
+    // OpenVINO encoder initialization (Intel CPUs/GPUs)
+    // This must be called after context creation
+#ifdef WHISPER_USE_OPENVINO
+    if (get_bool(options, "use_openvino", false)) {
+        std::string openvino_model = get_string(options, "openvino_model_path", "");
+        std::string openvino_device = get_string(options, "openvino_device", "CPU");
+        std::string openvino_cache = get_string(options, "openvino_cache_dir", "");
+
+        const char* ov_model = openvino_model.empty() ? nullptr : openvino_model.c_str();
+        const char* ov_cache = openvino_cache.empty() ? nullptr : openvino_cache.c_str();
+
+        int ret = whisper_ctx_init_openvino_encoder(ctx_, ov_model, openvino_device.c_str(), ov_cache);
+        if (ret != 0) {
+            // OpenVINO init failed - free context and throw error
+            whisper_free(ctx_);
+            ctx_ = nullptr;
+            Napi::Error::New(env, "Failed to initialize OpenVINO encoder. Make sure the OpenVINO model exists.")
+                .ThrowAsJavaScriptException();
+            return;
+        }
+    }
+#else
+    if (get_bool(options, "use_openvino", false)) {
+        // OpenVINO requested but not compiled in - free context and throw error
+        whisper_free(ctx_);
+        ctx_ = nullptr;
+        Napi::Error::New(env, "OpenVINO support is not enabled in this build. Rebuild with -DADDON_OPENVINO=ON")
+            .ThrowAsJavaScriptException();
+        return;
+    }
+#endif
 }
 
 WhisperContext::~WhisperContext() {

@@ -1,20 +1,28 @@
 # @whisper-cpp-node/core
 
-Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - fast speech-to-text on Apple Silicon with Core ML and Metal support.
+Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - fast speech-to-text with GPU acceleration.
 
 ## Features
 
-- **Fast**: Native whisper.cpp performance with Metal GPU acceleration
-- **Core ML**: Optional Apple Neural Engine support for 3x+ speedup
+- **Fast**: Native whisper.cpp performance with GPU acceleration
+- **Cross-platform**: macOS (Metal), Windows (Vulkan)
+- **Core ML**: Optional Apple Neural Engine support for 3x+ speedup (macOS)
+- **OpenVINO**: Optional Intel CPU/GPU encoder acceleration (Windows/Linux)
 - **Streaming VAD**: Built-in Silero voice activity detection
 - **TypeScript**: Full type definitions included
 - **Self-contained**: No external dependencies, just install and use
 
 ## Requirements
 
+**macOS:**
 - macOS 13.3+ (Ventura or later)
 - Apple Silicon (M1/M2/M3/M4)
 - Node.js 18+
+
+**Windows:**
+- Windows 10/11 (x64)
+- Node.js 18+
+- Vulkan-capable GPU (optional, for GPU acceleration)
 
 ## Installation
 
@@ -24,7 +32,9 @@ npm install @whisper-cpp-node/core
 pnpm add @whisper-cpp-node/core
 ```
 
-The platform-specific binary (`@whisper-cpp-node/darwin-arm64`) is automatically installed.
+The platform-specific binary is automatically installed:
+- macOS ARM64: `@whisper-cpp-node/darwin-arm64`
+- Windows x64: `@whisper-cpp-node/win32-x64`
 
 ## Quick Start
 
@@ -94,7 +104,12 @@ Create a persistent context for transcription.
 interface WhisperContextOptions {
   model: string;           // Path to GGML model file (required)
   use_gpu?: boolean;       // Enable GPU acceleration (default: true)
+                           // Uses Metal on macOS, Vulkan on Windows
   use_coreml?: boolean;    // Enable Core ML on macOS (default: false)
+  use_openvino?: boolean;  // Enable OpenVINO encoder on Intel (default: false)
+  openvino_device?: string; // OpenVINO device: 'CPU', 'GPU', 'NPU' (default: 'CPU')
+  openvino_model_path?: string; // Path to OpenVINO encoder model (auto-derived)
+  openvino_cache_dir?: string;  // Cache dir for compiled OpenVINO models
   flash_attn?: boolean;    // Enable Flash Attention (default: false)
   gpu_device?: number;     // GPU device index (default: 0)
   dtw?: string;            // DTW preset for word timestamps
@@ -225,7 +240,7 @@ vad.reset();
 vad.free();
 ```
 
-## Core ML Acceleration
+## Core ML Acceleration (macOS)
 
 For 3x+ faster encoding on Apple Silicon:
 
@@ -248,6 +263,35 @@ For 3x+ faster encoding on Apple Silicon:
      use_coreml: true,
    });
    ```
+
+## OpenVINO Acceleration (Intel)
+
+For faster encoder inference on Intel CPUs and GPUs (requires build with OpenVINO support):
+
+1. Install OpenVINO and convert the model:
+   ```bash
+   pip install openvino openvino-dev
+   python models/convert-whisper-to-openvino.py --model base.en
+   ```
+
+2. The OpenVINO model files are placed next to your GGML model:
+   ```
+   models/ggml-base.en.bin
+   models/ggml-base.en-encoder-openvino.xml
+   models/ggml-base.en-encoder-openvino.bin
+   ```
+
+3. Enable OpenVINO:
+   ```typescript
+   const ctx = createWhisperContext({
+     model: "./models/ggml-base.en.bin",
+     use_openvino: true,
+     openvino_device: "CPU",  // or "GPU" for Intel iGPU
+     openvino_cache_dir: "./openvino_cache", // optional, speeds up init
+   });
+   ```
+
+**Note:** OpenVINO support requires the addon to be built with `-DADDON_OPENVINO=ON`.
 
 ## Models
 

@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
-    "copy-binary": "./scripts/copy-binary.sh",
+    "copy-binary": "node ./scripts/copy-binary.js",
     "prepublish": "pnpm copy-binary && pnpm build"
   },
   "devDependencies": {

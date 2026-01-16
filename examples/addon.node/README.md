@@ -33,6 +33,11 @@ A high-performance Node.js native addon for whisper.cpp, providing speech-to-tex
 - C++11 compatible compiler
 - For standalone builds: cmake-js (`npm install -g cmake-js`)
 
+**Windows-specific:**
+- Visual Studio 2019+ with "Desktop development with C++" workload
+- Vulkan SDK (optional, for GPU acceleration)
+- OpenVINO Runtime (optional, for Intel CPU/GPU encoder acceleration)
+
 ### Install Dependencies
 
 ```bash
@@ -45,7 +50,17 @@ npm install
 **Standalone build** (self-contained, recommended for distribution):
 
 ```bash
+# Basic build (CPU only)
 npx cmake-js compile
+
+# Windows with Vulkan GPU support (auto-enabled on Windows)
+npx cmake-js compile
+
+# With OpenVINO support (Intel encoder acceleration)
+npx cmake-js compile --CDADDON_OPENVINO=ON
+
+# With both Vulkan and OpenVINO
+npx cmake-js compile --CDADDON_VULKAN=ON --CDADDON_OPENVINO=ON
 ```
 
 **Integrated build** (uses parent whisper.cpp build):
@@ -56,6 +71,16 @@ cmake -B build
 cmake --build build
 ```
 
+### GPU Backend Defaults
+
+| Platform | Default GPU Backend | Flag |
+|----------|-------------------|------|
+| macOS | Metal | `use_gpu: true` |
+| Windows | Vulkan | `use_gpu: true` |
+| Linux | Vulkan (if enabled) | `use_gpu: true` |
+
+**Note:** On Windows, Vulkan is auto-enabled during build. If you don't have the Vulkan SDK installed, the build will fall back to CPU-only.
+
 ### Download Models
 
 ```bash
@@ -65,6 +90,20 @@ cmake --build build
 # VAD model (for streaming VAD)
 ./models/download-vad-model.sh silero-v6.2.0
 ```
+
+### OpenVINO Model Setup
+
+For OpenVINO acceleration, you need to convert your Whisper model to OpenVINO IR format:
+
+```bash
+# Install dependencies
+pip install openvino openvino-dev
+
+# Convert the encoder to OpenVINO format (from whisper.cpp root)
+python models/convert-whisper-to-openvino.py --model base.en
+```
+
+This creates `ggml-base.en-encoder-openvino.xml` and `.bin` files alongside your model.
 
 ---
 
@@ -152,10 +191,14 @@ new WhisperContext(options)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `model` | string | *required* | Path to the GGML model file |
-| `use_gpu` | boolean | `true` | Enable GPU acceleration |
+| `use_gpu` | boolean | `true` | Enable GPU acceleration (Metal on macOS, Vulkan on Windows) |
 | `flash_attn` | boolean | `false` | Enable Flash Attention |
 | `gpu_device` | number | `0` | GPU device index |
 | `use_coreml` | boolean | `false` | Enable Core ML acceleration (macOS only) |
+| `use_openvino` | boolean | `false` | Enable OpenVINO encoder acceleration (Intel, requires build with `-DADDON_OPENVINO=ON`) |
+| `openvino_device` | string | `'CPU'` | OpenVINO device: 'CPU', 'GPU', 'NPU' |
+| `openvino_model_path` | string | *auto* | Path to OpenVINO encoder model (auto-derived if not set) |
+| `openvino_cache_dir` | string | `undefined` | Cache directory for compiled OpenVINO models |
 | `dtw` | string | `undefined` | DTW alignment preset (e.g., 'base.en', 'small', 'large.v3') |
 | `no_prints` | boolean | `false` | Suppress whisper.cpp log output |
 
@@ -166,6 +209,19 @@ const ctx = new addon.WhisperContext({
     model: './models/ggml-base.en.bin',
     use_gpu: true,
     flash_attn: true,
+    no_prints: true
+});
+```
+
+#### OpenVINO Example (Intel)
+
+```javascript
+// Requires build with: npx cmake-js compile --CDADDON_OPENVINO=ON
+const ctx = new addon.WhisperContext({
+    model: './models/ggml-base.en.bin',
+    use_openvino: true,
+    openvino_device: 'CPU',  // or 'GPU' for Intel iGPU
+    openvino_cache_dir: './openvino_cache',  // speeds up subsequent loads
     no_prints: true
 });
 ```

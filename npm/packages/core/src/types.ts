@@ -12,6 +12,28 @@ export interface WhisperContextOptions {
   gpu_device?: number;
   /** Enable Core ML acceleration on macOS (default: false) */
   use_coreml?: boolean;
+  /**
+   * Enable OpenVINO encoder acceleration (Intel CPUs/GPUs, default: false)
+   * Requires build with -DADDON_OPENVINO=ON and OpenVINO runtime installed.
+   * The OpenVINO encoder model must exist alongside the GGML model
+   * (e.g., ggml-base.en-encoder-openvino.xml for ggml-base.en.bin)
+   */
+  use_openvino?: boolean;
+  /**
+   * Path to OpenVINO encoder model (optional)
+   * If not specified, derived from the GGML model path with "-encoder-openvino.xml" suffix
+   */
+  openvino_model_path?: string;
+  /**
+   * OpenVINO device to run encoder inference on (default: "CPU")
+   * Options: "CPU", "GPU", "NPU", etc.
+   */
+  openvino_device?: string;
+  /**
+   * OpenVINO cache directory for compiled models (optional)
+   * Can speed up init time, especially for GPU, by caching compiled 'blobs'
+   */
+  openvino_cache_dir?: string;
   /** DTW alignment preset for word-level timestamps (e.g., 'base.en', 'small', 'large.v3') */
   dtw?: string;
   /** Suppress whisper.cpp log output (default: false) */
