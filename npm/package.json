@@ -5,8 +5,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "copy-binary": "node ./scripts/copy-binary.js",
-    "prepublish": "pnpm copy-binary && pnpm build",
-    "publish": "pnpm -r publish --access public"
+    "prepublish-all": "pnpm copy-binary && pnpm build",
+    "release": "pnpm prepublish-all && pnpm -r publish --access public"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
