@@ -1,4 +1,4 @@
-# @whisper-cpp-node/core
+# whisper-cpp-node
 
 Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - fast speech-to-text with GPU acceleration.
 
@@ -27,9 +27,9 @@ Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - f
 ## Installation
 
 ```bash
-npm install @whisper-cpp-node/core
+npm install whisper-cpp-node
 # or
-pnpm add @whisper-cpp-node/core
+pnpm add whisper-cpp-node
 ```
 
 The platform-specific binary is automatically installed:
@@ -44,7 +44,7 @@ The platform-specific binary is automatically installed:
 import {
   createWhisperContext,
   transcribeAsync,
-} from "@whisper-cpp-node/core";
+} from "whisper-cpp-node";
 
 // Create a context with your model
 const ctx = createWhisperContext({
@@ -73,7 +73,7 @@ ctx.free();
 import {
   createWhisperContext,
   transcribeAsync,
-} from "@whisper-cpp-node/core";
+} from "whisper-cpp-node";
 
 const ctx = createWhisperContext({
   model: "./models/ggml-base.en.bin",
@@ -216,7 +216,7 @@ interface VadContext {
 #### VAD Example
 
 ```typescript
-import { createVadContext } from "@whisper-cpp-node/core";
+import { createVadContext } from "whisper-cpp-node";
 
 const vad = createVadContext({
   model: "./models/ggml-silero-v6.2.0.bin",

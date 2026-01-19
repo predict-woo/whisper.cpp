@@ -2,9 +2,9 @@
 
 Native binary for macOS ARM64 (Apple Silicon).
 
-This package is automatically installed by `@whisper-cpp-node/core` on compatible platforms.
+This package is automatically installed by `whisper-cpp-node` on compatible platforms.
 
-**Do not install this package directly.** Install `@whisper-cpp-node/core` instead.
+**Do not install this package directly.** Install `whisper-cpp-node` instead.
 
 ## Requirements
 
