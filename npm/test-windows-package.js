@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Test script to verify @whisper-cpp-node/core package works on Windows
+ * Test script to verify whisper-cpp-node package works on Windows
  * Tests Vulkan GPU acceleration and optionally OpenVINO encoder
  */
 
@@ -11,13 +11,13 @@ const fs = require("fs");
 process.env.DEBUG_LOADER = "1";
 
 async function main() {
-  console.log("=== Testing @whisper-cpp-node/core (Windows) ===\n");
+  console.log("=== Testing whisper-cpp-node (Windows) ===\n");
 
   // Test 1: Load the package
   console.log("1. Loading package...");
   let whisper;
   try {
-    whisper = require("./packages/core/dist/index.js");
+    whisper = require("./packages/whisper-cpp-node/dist/index.js");
     console.log("   ✅ Package loaded successfully\n");
   } catch (err) {
     console.error("   ❌ Failed to load package:", err.message);

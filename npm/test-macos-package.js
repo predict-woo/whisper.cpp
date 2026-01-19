@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Test script to verify @whisper-cpp-node/core package works correctly
+ * Test script to verify whisper-cpp-node package works correctly
  */
 
 const path = require("path");
@@ -9,13 +9,13 @@ const path = require("path");
 process.env.DEBUG_LOADER = "1";
 
 async function main() {
-  console.log("=== Testing @whisper-cpp-node/core ===\n");
+  console.log("=== Testing whisper-cpp-node ===\n");
 
   // Test 1: Load the package
   console.log("1. Loading package...");
   let whisper;
   try {
-    whisper = require("./packages/core/dist/index.js");
+    whisper = require("./packages/whisper-cpp-node/dist/index.js");
     console.log("   ✅ Package loaded successfully\n");
   } catch (err) {
     console.error("   ❌ Failed to load package:", err.message);
@@ -83,7 +83,9 @@ async function main() {
         }
         console.log();
       } else {
-        console.log("4. ⚠️  Audio file not found, skipping transcription test\n");
+        console.log(
+          "4. ⚠️  Audio file not found, skipping transcription test\n"
+        );
       }
 
       ctx.free();

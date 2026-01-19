@@ -120,11 +120,17 @@ if(ADDON_STANDALONE)
     endif()
 
     # ========================================================================
-    # OpenVINO support (Intel CPUs/GPUs)
+    # OpenVINO support (Intel CPUs/GPUs) - auto-enabled on Windows if found
     # ========================================================================
     set(WHISPER_OPENVINO_ENABLED OFF)
+    
+    # Auto-enable OpenVINO on Windows if not explicitly disabled
+    if(WIN32 AND NOT DEFINED ADDON_OPENVINO)
+        set(ADDON_OPENVINO ON)
+    endif()
+    
     if(ADDON_OPENVINO)
-        find_package(OpenVINO COMPONENTS Runtime)
+        find_package(OpenVINO COMPONENTS Runtime QUIET)
         if(OpenVINO_FOUND)
             message(STATUS "OpenVINO found - enabling OpenVINO encoder support")
             set(WHISPER_OPENVINO_ENABLED ON)
@@ -143,7 +149,11 @@ if(ADDON_STANDALONE)
             target_link_libraries(whisper_openvino PRIVATE openvino::runtime)
             set_target_properties(whisper_openvino PROPERTIES POSITION_INDEPENDENT_CODE ON)
         else()
-            message(WARNING "OpenVINO requested but not found - OpenVINO support disabled")
+            if(WIN32)
+                message(STATUS "OpenVINO not found - OpenVINO support disabled (install OpenVINO for Intel acceleration)")
+            else()
+                message(WARNING "OpenVINO requested but not found - OpenVINO support disabled")
+            endif()
         endif()
     endif()
 
