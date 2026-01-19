@@ -1,7 +1,6 @@
 {
   "name": "whisper-cpp-node-monorepo",
   "version": "0.0.0",
-  "private": true,
   "scripts": {
     "build": "pnpm -r build",
     "copy-binary": "node ./scripts/copy-binary.js",
