@@ -153,6 +153,13 @@ export interface TranscribeOptionsBase {
   // === Callbacks ===
   /** Progress callback function (progress: 0-100) */
   progress_callback?: (progress: number) => void;
+
+  /**
+   * Streaming callback - called for each new segment during transcription.
+   * Enables real-time output as audio is processed.
+   * The final result callback will still receive all segments at completion.
+   */
+  on_new_segment?: (segment: StreamingSegment) => void;
 }
 
 /**
@@ -185,6 +192,38 @@ export type TranscribeOptions = TranscribeOptionsFile | TranscribeOptionsBuffer;
  * [2]: Transcribed text
  */
 export type TranscriptSegment = [start: string, end: string, text: string];
+
+/**
+ * Token information for streaming callbacks
+ */
+export interface StreamingToken {
+  /** Token text */
+  text: string;
+  /** Token probability (0.0 to 1.0) */
+  probability: number;
+  /** Token timestamp start (in centiseconds from audio start, only if token_timestamps enabled) */
+  t0?: number;
+  /** Token timestamp end (in centiseconds from audio start, only if token_timestamps enabled) */
+  t1?: number;
+}
+
+/**
+ * Segment data passed to streaming callback
+ */
+export interface StreamingSegment {
+  /** Start time in format "HH:MM:SS,mmm" */
+  start: string;
+  /** End time in format "HH:MM:SS,mmm" */
+  end: string;
+  /** Transcribed text for this segment */
+  text: string;
+  /** Segment index (0-based) */
+  segment_index: number;
+  /** Whether this is a partial segment (may be updated) */
+  is_partial: boolean;
+  /** Token-level information (only if token_timestamps enabled) */
+  tokens?: StreamingToken[];
+}
 
 /**
  * Transcription result

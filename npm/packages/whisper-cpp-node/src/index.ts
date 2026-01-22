@@ -20,6 +20,8 @@ export type {
   TranscribeOptionsBuffer,
   TranscribeResult,
   TranscriptSegment,
+  StreamingSegment,
+  StreamingToken,
   WhisperContext,
   VadContext,
   WhisperContextConstructor,

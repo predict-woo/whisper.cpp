@@ -463,6 +463,13 @@ addon.transcribe(context, options, callback)
 | `vad_min_silence_duration_ms` | number | `100` | Min silence duration |
 | `vad_speech_pad_ms` | number | `30` | Padding around speech segments |
 
+**Callbacks:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `progress_callback` | function | `null` | Progress callback `(progress) => {}` |
+| `on_new_segment` | function | `null` | Streaming callback `(segment) => {}` - called for each new segment during transcription |
+
 **Other:**
 
 | Parameter | Type | Default | Description |
@@ -472,7 +479,6 @@ addon.transcribe(context, options, callback)
 | `single_segment` | boolean | `false` | Force single segment output |
 | `no_context` | boolean | `true` | Don't use previous context |
 | `comma_in_time` | boolean | `true` | Use comma in timestamp format |
-| `progress_callback` | function | `null` | Progress callback `(progress) => {}` |
 
 #### Result Object
 
@@ -485,6 +491,53 @@ addon.transcribe(context, options, callback)
     ],
     language: 'en'  // Only if detect_language is true
 }
+```
+
+#### Streaming Segment Object
+
+When using `on_new_segment`, each segment passed to the callback has this structure:
+
+```javascript
+{
+    start: '00:00:00,000',      // Start timestamp
+    end: '00:00:02,500',        // End timestamp
+    text: ' Hello world',       // Transcribed text
+    segment_index: 0,           // 0-based segment index
+    is_partial: false,          // Always false (reserved for future use)
+    tokens: [                   // Only present if token_timestamps: true
+        { text: ' Hello', probability: 0.95, t0: 0, t1: 120 },
+        { text: ' world', probability: 0.92, t0: 120, t1: 250 },
+    ]
+}
+```
+
+#### Streaming Example
+
+Real-time output as audio is being processed:
+
+```javascript
+const ctx = new addon.WhisperContext({
+    model: './models/ggml-base.en.bin',
+    no_prints: true
+});
+
+addon.transcribe(ctx, {
+    fname_inp: './long-audio.wav',
+    language: 'en',
+
+    // Streaming: called for each segment as it's generated
+    on_new_segment: (segment) => {
+        console.log(`[${segment.start} --> ${segment.end}]${segment.text}`);
+    },
+
+    progress_callback: (progress) => {
+        // Progress still works alongside streaming
+    }
+}, (err, result) => {
+    // Final callback still receives all segments
+    console.log(`\nComplete! Total segments: ${result.segments.length}`);
+    ctx.free();
+});
 ```
 
 #### Example with All Options

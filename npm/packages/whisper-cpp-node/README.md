@@ -94,6 +94,32 @@ for (const [start, end, text] of result.segments) {
 ctx.free();
 ```
 
+### Streaming transcription
+
+Get real-time output as audio is processed. The `on_new_segment` callback fires for each segment as it's generated, while the final callback still receives all segments at completion (backward compatible):
+
+```typescript
+import { createWhisperContext, transcribe } from "whisper-cpp-node";
+
+const ctx = createWhisperContext({
+  model: "./models/ggml-base.en.bin",
+});
+
+transcribe(ctx, {
+  fname_inp: "./long-audio.wav",
+  language: "en",
+
+  // Called for each segment as it's generated
+  on_new_segment: (segment) => {
+    console.log(`[${segment.start}]${segment.text}`);
+  },
+}, (err, result) => {
+  // Final callback still receives ALL segments at completion
+  console.log(`Done! ${result.segments.length} segments`);
+  ctx.free();
+});
+```
+
 ## API
 
 ### `createWhisperContext(options)`
@@ -180,6 +206,17 @@ interface TranscribeOptionsBase {
 
   // Callbacks
   progress_callback?: (progress: number) => void;
+  on_new_segment?: (segment: StreamingSegment) => void;  // Streaming callback
+}
+
+// Streaming segment (passed to on_new_segment callback)
+interface StreamingSegment {
+  start: string;           // Start timestamp "HH:MM:SS,mmm"
+  end: string;             // End timestamp
+  text: string;            // Transcribed text
+  segment_index: number;   // 0-based index
+  is_partial: boolean;     // Reserved for future use
+  tokens?: StreamingToken[]; // Only if token_timestamps enabled
 }
 
 // Result
