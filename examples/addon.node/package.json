@@ -1,11 +1,16 @@
 {
   "name": "addon.node",
   "version": "0.0.0",
-  "description": "",
+  "description": "whisper.cpp Node.js addon with GPU acceleration",
   "main": "index.js",
   "author": "Qanhe Chen",
   "license": "MIT",
   "scripts": {
+    "build": "cmake-js compile -B Release",
+    "build:debug": "cmake-js compile -B Debug -D",
+    "configure": "cmake-js configure -B Release",
+    "clean": "cmake-js clean",
+    "rebuild": "cmake-js rebuild -B Release",
     "test": "jest"
   },
   "devDependencies": {

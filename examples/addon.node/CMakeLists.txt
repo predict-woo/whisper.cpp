@@ -12,13 +12,17 @@ set(TARGET addon.node)
 # ============================================================================
 # Build options for GPU backends
 # ============================================================================
-option(ADDON_VULKAN   "Enable Vulkan GPU support (Windows/Linux)"  OFF)
-option(ADDON_OPENVINO "Enable OpenVINO encoder support (Intel)"    OFF)
-
-# Auto-enable Vulkan on Windows if not explicitly set
-if(WIN32 AND NOT DEFINED ADDON_VULKAN)
-    set(ADDON_VULKAN ON)
+# Auto-enable Vulkan on Windows by default
+if(WIN32)
+    set(ADDON_VULKAN_DEFAULT ON)
+    set(ADDON_OPENVINO_DEFAULT ON)
+else()
+    set(ADDON_VULKAN_DEFAULT OFF)
+    set(ADDON_OPENVINO_DEFAULT OFF)
 endif()
+
+option(ADDON_VULKAN   "Enable Vulkan GPU support (Windows/Linux)"  ${ADDON_VULKAN_DEFAULT})
+option(ADDON_OPENVINO "Enable OpenVINO encoder support (Intel)"    ${ADDON_OPENVINO_DEFAULT})
 
 # ============================================================================
 # MSVC UTF-8 encoding fix (must be set early, before adding subdirectories)
@@ -123,11 +127,6 @@ if(ADDON_STANDALONE)
     # OpenVINO support (Intel CPUs/GPUs) - auto-enabled on Windows if found
     # ========================================================================
     set(WHISPER_OPENVINO_ENABLED OFF)
-    
-    # Auto-enable OpenVINO on Windows if not explicitly disabled
-    if(WIN32 AND NOT DEFINED ADDON_OPENVINO)
-        set(ADDON_OPENVINO ON)
-    endif()
     
     if(ADDON_OPENVINO)
         find_package(OpenVINO COMPONENTS Runtime QUIET)
@@ -264,4 +263,83 @@ target_link_libraries(${TARGET}
 # ============================================================================
 if(MSVC AND CMAKE_JS_NODELIB_DEF AND CMAKE_JS_NODELIB_TARGET)
     execute_process(COMMAND ${CMAKE_AR} /def:${CMAKE_JS_NODELIB_DEF} /out:${CMAKE_JS_NODELIB_TARGET} ${CMAKE_STATIC_LINKER_FLAGS})
+endif()
+
+# ============================================================================
+# Copy runtime DLLs to output directory (Windows)
+# ============================================================================
+if(WIN32 AND WHISPER_OPENVINO_ENABLED)
+    # Find OpenVINO runtime DLLs
+    get_target_property(OPENVINO_RUNTIME_LIB openvino::runtime IMPORTED_LOCATION_RELEASE)
+    if(NOT OPENVINO_RUNTIME_LIB)
+        get_target_property(OPENVINO_RUNTIME_LIB openvino::runtime IMPORTED_LOCATION)
+    endif()
+
+    if(OPENVINO_RUNTIME_LIB)
+        get_filename_component(OPENVINO_LIB_DIR "${OPENVINO_RUNTIME_LIB}" DIRECTORY)
+        message(STATUS "OpenVINO library directory: ${OPENVINO_LIB_DIR}")
+
+        # Core DLLs (in main bin directory)
+        set(OPENVINO_CORE_DLLS
+            openvino.dll
+            openvino_ir_frontend.dll
+            tbb12.dll
+        )
+
+        # Plugin DLLs (may be in versioned subdirectory for conda installs)
+        set(OPENVINO_PLUGIN_DLLS
+            openvino_intel_cpu_plugin.dll
+            openvino_intel_gpu_plugin.dll
+            openvino_auto_plugin.dll
+        )
+
+        # Copy core DLLs from main directory
+        foreach(dll ${OPENVINO_CORE_DLLS})
+            set(dll_path "${OPENVINO_LIB_DIR}/${dll}")
+            if(EXISTS "${dll_path}")
+                add_custom_command(TARGET ${TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll_path}"
+                        "$<TARGET_FILE_DIR:${TARGET}>"
+                    COMMENT "Copying ${dll}"
+                )
+            else()
+                message(STATUS "OpenVINO DLL not found (skipping): ${dll_path}")
+            endif()
+        endforeach()
+
+        # Find plugins - check main dir first, then versioned subdirectories (conda layout)
+        foreach(dll ${OPENVINO_PLUGIN_DLLS})
+            set(dll_found FALSE)
+            set(dll_path "${OPENVINO_LIB_DIR}/${dll}")
+
+            if(EXISTS "${dll_path}")
+                set(dll_found TRUE)
+            else()
+                # Search in versioned subdirectories (e.g., openvino-2024.6.0/)
+                file(GLOB OPENVINO_SUBDIRS "${OPENVINO_LIB_DIR}/openvino-*")
+                foreach(subdir ${OPENVINO_SUBDIRS})
+                    if(IS_DIRECTORY "${subdir}")
+                        set(subdir_dll_path "${subdir}/${dll}")
+                        if(EXISTS "${subdir_dll_path}")
+                            set(dll_path "${subdir_dll_path}")
+                            set(dll_found TRUE)
+                            break()
+                        endif()
+                    endif()
+                endforeach()
+            endif()
+
+            if(dll_found)
+                add_custom_command(TARGET ${TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${dll_path}"
+                        "$<TARGET_FILE_DIR:${TARGET}>"
+                    COMMENT "Copying ${dll}"
+                )
+            else()
+                message(STATUS "OpenVINO plugin not found (skipping): ${dll}")
+            endif()
+        endforeach()
+    endif()
 endif()

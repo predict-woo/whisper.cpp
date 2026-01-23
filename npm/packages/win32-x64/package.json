@@ -16,7 +16,13 @@
   ],
   "main": "whisper.node",
   "files": [
-    "whisper.node"
+    "whisper.node",
+    "openvino.dll",
+    "openvino_intel_cpu_plugin.dll",
+    "openvino_intel_gpu_plugin.dll",
+    "openvino_auto_plugin.dll",
+    "openvino_ir_frontend.dll",
+    "tbb12.dll"
   ],
   "publishConfig": {
     "access": "public"
