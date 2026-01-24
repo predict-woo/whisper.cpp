@@ -1,6 +1,6 @@
 {
   "name": "@whisper-cpp-node/win32-x64",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "whisper.cpp native addon for Windows x64 with Vulkan and OpenVINO acceleration",
   "license": "MIT",
   "repository": {
