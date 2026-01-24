@@ -22,7 +22,8 @@
     "openvino_intel_gpu_plugin.dll",
     "openvino_auto_plugin.dll",
     "openvino_ir_frontend.dll",
-    "tbb12.dll"
+    "tbb12.dll",
+    "pugixml.dll"
   ],
   "publishConfig": {
     "access": "public"

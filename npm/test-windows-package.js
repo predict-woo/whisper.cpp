@@ -71,7 +71,7 @@ async function main() {
     __dirname,
     "../models/ggml-large-v3-turbo-q5_0.bin"
   );
-  const audioPath = path.join(__dirname, "../samples/jfk.wav");
+  const audioPath = path.join(__dirname, "../samples/test.wav");
   
   // OpenVINO model paths (optional)
   const openvinoModelPath = path.join(

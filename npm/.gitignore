@@ -15,7 +15,7 @@ packages/win32-x64/openvino_intel_gpu_plugin.dll
 packages/win32-x64/openvino_auto_plugin.dll
 packages/win32-x64/openvino_ir_frontend.dll
 packages/win32-x64/tbb12.dll
-
+packages/win32-x64/pugixml.dll
 # Logs
 *.log
 npm-debug.log*

@@ -284,6 +284,7 @@ if(WIN32 AND WHISPER_OPENVINO_ENABLED)
             openvino.dll
             openvino_ir_frontend.dll
             tbb12.dll
+            pugixml.dll
         )
 
         # Plugin DLLs (may be in versioned subdirectory for conda installs)

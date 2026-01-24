@@ -60,6 +60,7 @@ if (os.platform() === "win32") {
     "openvino_auto_plugin.dll",
     "openvino_ir_frontend.dll",
     "tbb12.dll",
+    "pugixml.dll",
   ];
 
   let copiedDlls = 0;
