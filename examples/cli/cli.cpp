@@ -97,6 +97,7 @@ struct whisper_params {
     std::string openvino_encode_device = "CPU";
 
     std::string dtw = "";
+    int         dtw_norm_top_k = 10;
 
     std::vector<std::string> fname_inp = {};
     std::vector<std::string> fname_out = {};
@@ -198,6 +199,7 @@ static bool whisper_params_parse(int argc, char ** argv, whisper_params & params
         else if (arg == "-f"    || arg == "--file")                 { params.fname_inp.emplace_back(ARGV_NEXT); }
         else if (arg == "-oved" || arg == "--ov-e-device")          { params.openvino_encode_device = ARGV_NEXT; }
         else if (arg == "-dtw"  || arg == "--dtw")                  { params.dtw             = ARGV_NEXT; }
+        else if (                  arg == "--dtw-norm-top")        { params.dtw_norm_top_k  = std::stoi(ARGV_NEXT); }
         else if (arg == "-ls"   || arg == "--log-score")            { params.log_score       = true; }
         else if (arg == "-ng"   || arg == "--no-gpu")               { params.use_gpu         = false; }
         else if (arg == "-dev"  || arg == "--device")               { params.gpu_device      = std::stoi(ARGV_NEXT); }
@@ -280,6 +282,7 @@ static void whisper_print_usage(int /*argc*/, char ** argv, const whisper_params
     fprintf(stderr, "  -f FNAME,  --file FNAME           [%-7s] input audio file path\n",                          "");
     fprintf(stderr, "  -oved D,   --ov-e-device DNAME    [%-7s] the OpenVINO device used for encode inference\n",  params.openvino_encode_device.c_str());
     fprintf(stderr, "  -dtw MODEL --dtw MODEL            [%-7s] compute token-level timestamps\n",                 params.dtw.c_str());
+    fprintf(stderr, "             --dtw-norm-top N       [%-7d] L2 norm head filtering: keep top N heads (use with -dtw top-N)\n", params.dtw_norm_top_k);
     fprintf(stderr, "  -ls,       --log-score            [%-7s] log best decoder scores of tokens\n",              params.log_score?"true":"false");
     fprintf(stderr, "  -ng,       --no-gpu               [%-7s] disable GPU\n",                                    params.use_gpu ? "false" : "true");
     fprintf(stderr, "  -dev N,    --device N             [%-7d] GPU device ID (default: 0)\n",                     params.gpu_device);
@@ -1030,9 +1033,31 @@ int main(int argc, char ** argv) {
         if (params.dtw == "large.v3")  cparams.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3;
         if (params.dtw == "large.v3.turbo")  cparams.dtw_aheads_preset = WHISPER_AHEADS_LARGE_V3_TURBO;
 
+        // --dtw top-N: use all heads from top N layers (plain averaging)
+        // --dtw top-N-norm: use top N layers + L2 norm filtering (keeps --dtw-norm-top heads)
+        if (cparams.dtw_aheads_preset == WHISPER_AHEADS_NONE && params.dtw.rfind("top-", 0) == 0) {
+            std::string val = params.dtw.substr(4);
+            bool use_norm = false;
+            auto norm_pos = val.find("-norm");
+            if (norm_pos != std::string::npos) {
+                use_norm = true;
+                val = val.substr(0, norm_pos);
+            }
+            int n_top = std::stoi(val);
+            cparams.dtw_n_top = n_top;
+            cparams.dtw_norm_top_k = params.dtw_norm_top_k;
+            cparams.dtw_aheads_preset = use_norm ? WHISPER_AHEADS_N_TOP_MOST_NORM : WHISPER_AHEADS_N_TOP_MOST;
+        }
+
         if (cparams.dtw_aheads_preset == WHISPER_AHEADS_NONE) {
             fprintf(stderr, "error: unknown DTW preset '%s'\n", params.dtw.c_str());
             return 3;
+        }
+
+        if (cparams.dtw_aheads_preset == WHISPER_AHEADS_N_TOP_MOST ||
+            cparams.dtw_aheads_preset == WHISPER_AHEADS_N_TOP_MOST_NORM) {
+            cparams.flash_attn = false;
+            cparams.dtw_mem_size = 1024*1024*512;
         }
     }
 

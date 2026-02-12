@@ -34,8 +34,27 @@ export interface WhisperContextOptions {
    * Can speed up init time, especially for GPU, by caching compiled 'blobs'
    */
   openvino_cache_dir?: string;
-  /** DTW alignment preset for word-level timestamps (e.g., 'base.en', 'small', 'large.v3') */
+  /**
+   * DTW alignment preset for word-level timestamps.
+   *
+   * Named presets: 'tiny', 'tiny.en', 'base', 'base.en', 'small', 'small.en',
+   *   'medium', 'medium.en', 'large.v1', 'large.v2', 'large.v3', 'large.v3.turbo'
+   *
+   * Dynamic presets:
+   *   'top-N'      - Use all heads from top N text layers (plain averaging)
+   *   'top-N-norm' - Use top N layers + L2 norm filtering (keeps dtw_norm_top_k best heads)
+   *
+   * @example
+   * dtw: 'large.v3.turbo'   // named preset
+   * dtw: 'top-4'            // top 4 layers, all heads averaged
+   * dtw: 'top-4-norm'       // top 4 layers, L2 norm selects best heads
+   */
   dtw?: string;
+  /**
+   * Number of attention heads to keep after L2 norm filtering (default: 10).
+   * Only used when dtw is set to a 'top-N-norm' preset.
+   */
+  dtw_norm_top_k?: number;
   /** Suppress whisper.cpp log output (default: false) */
   no_prints?: boolean;
 }
@@ -186,12 +205,18 @@ export interface TranscribeOptionsBuffer extends TranscribeOptionsBase {
 export type TranscribeOptions = TranscribeOptionsFile | TranscribeOptionsBuffer;
 
 /**
- * Transcription result segment (tuple format)
- * [0]: Start time in format "HH:MM:SS,mmm"
- * [1]: End time in format "HH:MM:SS,mmm"
- * [2]: Transcribed text
+ * Transcription result segment
  */
-export type TranscriptSegment = [start: string, end: string, text: string];
+export interface TranscriptSegment {
+  /** Start time in format "HH:MM:SS,mmm" */
+  start: string;
+  /** End time in format "HH:MM:SS,mmm" */
+  end: string;
+  /** Transcribed text */
+  text: string;
+  /** Token-level data (only present when token_timestamps is enabled) */
+  tokens?: StreamingToken[];
+}
 
 /**
  * Token information for streaming callbacks
@@ -201,10 +226,16 @@ export interface StreamingToken {
   text: string;
   /** Token probability (0.0 to 1.0) */
   probability: number;
-  /** Token timestamp start (in centiseconds from audio start, only if token_timestamps enabled) */
-  t0?: number;
-  /** Token timestamp end (in centiseconds from audio start, only if token_timestamps enabled) */
-  t1?: number;
+  /** Token timestamp start (in centiseconds from audio start) */
+  t0: number;
+  /** Token timestamp end (in centiseconds from audio start) */
+  t1: number;
+  /**
+   * DTW-aligned timestamp (in centiseconds from audio start).
+   * Only meaningful when the context was created with a DTW preset.
+   * Typically more accurate than t0/t1 for word-level alignment.
+   */
+  t_dtw: number;
 }
 
 /**
@@ -229,8 +260,10 @@ export interface StreamingSegment {
  * Transcription result
  */
 export interface TranscribeResult {
-  /** Array of transcript segments as [start, end, text] tuples */
+  /** Array of transcript segments */
   segments: TranscriptSegment[];
+  /** Detected language (when detect_language is true) */
+  language?: string;
 }
 
 /**
