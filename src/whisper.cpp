@@ -2322,7 +2322,7 @@ static struct ggml_cgraph * whisper_build_graph_cross(
         struct ggml_tensor * k;
         struct ggml_tensor * v;
 
-        if (wctx.params.flash_attn) {
+        if (wctx.params.flash_attn && !wctx.params.dtw_token_timestamps) {
             k = ggml_view_1d(ctx0, wstate.kv_cross.k, n_state*n_ctx,
                     (ggml_element_size(wstate.kv_cross.k)*n_state)*(il*n_ctx_pad));
 
@@ -2682,7 +2682,7 @@ static struct ggml_cgraph * whisper_build_graph_decoder(
                         ggml_reshape_3d(ctx0, Qcur, n_state_head, n_head, n_tokens),
                         0, 2, 1, 3);
 
-            if (wctx.params.flash_attn) {
+            if (wctx.params.flash_attn && !wctx.params.dtw_token_timestamps) {
                 struct ggml_tensor * Kcross =
                     ggml_view_3d(ctx0, wstate.kv_cross.k,
                             n_state_head, n_audio_ctx_pad, n_head,
@@ -3717,8 +3717,7 @@ struct whisper_context * whisper_init_with_params_no_state(struct whisper_model_
     ggml_time_init();
 
     if (params.flash_attn && params.dtw_token_timestamps) {
-        WHISPER_LOG_WARN("%s: dtw_token_timestamps is not supported with flash_attn - disabling\n", __func__);
-        params.dtw_token_timestamps = false;
+        WHISPER_LOG_INFO("%s: flash_attn + dtw: decoder cross-attention will use non-flash path for alignment heads\n", __func__);
     }
 
     WHISPER_LOG_INFO("%s: use gpu    = %d\n", __func__, params.use_gpu);
@@ -9030,7 +9029,7 @@ static void whisper_exp_compute_token_level_timestamps_dtw(
             }
         }
 
-        WHISPER_LOG_INFO("%s: L2 norm filtering: kept %d/%d heads\n", __func__, top_k, (int)n_heads);
+        WHISPER_LOG_DEBUG("%s: L2 norm filtering: kept %d/%d heads\n", __func__, top_k, (int)n_heads);
     }
 
     // Normalize - in original OpenAI code, this is done over dim=-2. In this case,
@@ -9045,8 +9044,21 @@ static void whisper_exp_compute_token_level_timestamps_dtw(
     // Pass median filter - this is done over AUDIO_TOKENS dimension.
     // IN: Tensor with N_ALIGNMENT_HEADS*N_TOKENS*N_AUDIO_TOKENS dims
     // OUT: Same dims
-    median_filter_user_data mf_user_data = {medfilt_width};
-    w = ggml_map_custom1(gctx, w, median_filter, 1, &mf_user_data);
+    int effective_medfilt = medfilt_width;
+    if (n_audio_tokens <= effective_medfilt) {
+        // Largest odd number strictly less than n_audio_tokens
+        effective_medfilt = n_audio_tokens >= 3 ? ((n_audio_tokens - 2) | 1) : 0;
+    }
+
+    if (effective_medfilt != medfilt_width) {
+        WHISPER_LOG_INFO("%s: DTW short chunk: n_audio_tokens=%d, medfilt adjusted %d -> %d\n",
+                __func__, n_audio_tokens, medfilt_width, effective_medfilt);
+    }
+
+    median_filter_user_data mf_user_data = {effective_medfilt};
+    if (effective_medfilt >= 1) {
+        w = ggml_map_custom1(gctx, w, median_filter, 1, &mf_user_data);
+    }
 
     // Take mean over columns, scale by -1, reshape to 2D tensor, remove SOT sequence and EOT
     // IN: Tensor with N_ALIGNMENT_HEADS*N_TOKENS*N_AUDIO_TOKENS dims

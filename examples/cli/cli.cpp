@@ -1056,7 +1056,6 @@ int main(int argc, char ** argv) {
 
         if (cparams.dtw_aheads_preset == WHISPER_AHEADS_N_TOP_MOST ||
             cparams.dtw_aheads_preset == WHISPER_AHEADS_N_TOP_MOST_NORM) {
-            cparams.flash_attn = false;
             cparams.dtw_mem_size = 1024*1024*512;
         }
     }
