@@ -137,8 +137,8 @@ async function main() {
         console.log(`\r   ✅ Transcription completed (${transcribeTime}s)`);
         console.log(`   Segments: ${result.segments.length}`);
         
-        for (const [start, end, text] of result.segments) {
-          console.log(`   [${start} --> ${end}]${text}`);
+        for (const seg of result.segments) {
+          console.log(`   [${seg.start} --> ${seg.end}]${seg.text}`);
         }
         console.log();
         

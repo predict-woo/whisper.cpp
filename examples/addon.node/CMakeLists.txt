@@ -266,6 +266,18 @@ if(MSVC AND CMAKE_JS_NODELIB_DEF AND CMAKE_JS_NODELIB_TARGET)
 endif()
 
 # ============================================================================
+# Delay-load Vulkan DLL (Windows) - allows graceful CPU fallback
+# Without this, the addon fails to load entirely if vulkan-1.dll is missing.
+# With /DELAYLOAD, vulkan-1.dll is only loaded when the first Vulkan function
+# is called. If GPU init fails before that (or falls back to CPU), the DLL
+# is never needed.
+# ============================================================================
+if(MSVC AND ADDON_VULKAN)
+    target_link_options(${TARGET} PRIVATE "/DELAYLOAD:vulkan-1.dll")
+    target_link_libraries(${TARGET} delayimp.lib)
+endif()
+
+# ============================================================================
 # Copy runtime DLLs to output directory (Windows)
 # ============================================================================
 if(WIN32 AND WHISPER_OPENVINO_ENABLED)

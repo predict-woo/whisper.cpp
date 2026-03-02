@@ -12,6 +12,14 @@
 #include <cfloat>
 #include <mutex>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 // ============================================================================
 // Utility functions
 // ============================================================================
@@ -163,6 +171,14 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
     // Load the model
     ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cparams);
 
+    // GPU fallback: if init failed with GPU enabled, retry with CPU only
+    if (ctx_ == nullptr && cparams.use_gpu) {
+        fprintf(stderr, "[whisper-addon] GPU initialization failed, falling back to CPU...\n");
+        struct whisper_context_params cpu_params = cparams;
+        cpu_params.use_gpu = false;
+        ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cpu_params);
+    }
+
     if (ctx_ == nullptr) {
         Napi::Error::New(env, "Failed to initialize whisper context from model: " + model_path)
             .ThrowAsJavaScriptException();
@@ -170,7 +186,9 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
     }
 
     // OpenVINO encoder initialization (Intel CPUs/GPUs)
-    // This must be called after context creation
+    // This must be called after context creation.
+    // If it fails, we continue without it — the model still works,
+    // just without the OpenVINO encoder acceleration.
 #ifdef WHISPER_USE_OPENVINO
     if (get_bool(options, "use_openvino", false)) {
         std::string openvino_model = get_string(options, "openvino_model_path", "");
@@ -182,22 +200,12 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
 
         int ret = whisper_ctx_init_openvino_encoder(ctx_, ov_model, openvino_device.c_str(), ov_cache);
         if (ret != 0) {
-            // OpenVINO init failed - free context and throw error
-            whisper_free(ctx_);
-            ctx_ = nullptr;
-            Napi::Error::New(env, "Failed to initialize OpenVINO encoder. Make sure the OpenVINO model exists.")
-                .ThrowAsJavaScriptException();
-            return;
+            fprintf(stderr, "[whisper-addon] OpenVINO encoder init failed, continuing without it...\n");
         }
     }
 #else
     if (get_bool(options, "use_openvino", false)) {
-        // OpenVINO requested but not compiled in - free context and throw error
-        whisper_free(ctx_);
-        ctx_ = nullptr;
-        Napi::Error::New(env, "OpenVINO support is not enabled in this build. Rebuild with -DADDON_OPENVINO=ON")
-            .ThrowAsJavaScriptException();
-        return;
+        fprintf(stderr, "[whisper-addon] OpenVINO not available in this build, ignoring use_openvino flag\n");
     }
 #endif
 }
@@ -886,6 +894,14 @@ public:
         cparams.flash_attn = params_.flash_attn;
 
         struct whisper_context* ctx = whisper_init_from_file_with_params(params_.model.c_str(), cparams);
+
+        // GPU fallback: if init failed with GPU enabled, retry with CPU only
+        if (ctx == nullptr && cparams.use_gpu) {
+            fprintf(stderr, "[whisper-addon] GPU initialization failed, falling back to CPU...\n");
+            cparams.use_gpu = false;
+            ctx = whisper_init_from_file_with_params(params_.model.c_str(), cparams);
+        }
+
         if (ctx == nullptr) {
             SetError("failed to initialize whisper context");
             return;
@@ -1255,6 +1271,21 @@ Napi::Value VadContext::GetSampleRate(const Napi::CallbackInfo& info) {
 // ============================================================================
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+#ifdef _WIN32
+    // Probe for Vulkan runtime availability BEFORE ggml's backend registry
+    // is constructed (it's lazily initialized on first use). If vulkan-1.dll
+    // is missing, set GGML_DISABLE_VULKAN so ggml never tries to call into
+    // it — avoiding a delayed-load or link-time crash.
+    {
+        HMODULE vkDll = LoadLibraryA("vulkan-1.dll");
+        if (vkDll) {
+            FreeLibrary(vkDll);
+        } else {
+            _putenv_s("GGML_DISABLE_VULKAN", "1");
+        }
+    }
+#endif
+
     // Initialize WhisperContext class
     WhisperContext::Init(env, exports);
 
