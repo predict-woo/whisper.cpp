@@ -102,12 +102,12 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<WhisperContext>(info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 1 || !info[0].IsObject()) {
+    if (info.Length() < 1 || !info[(size_t)0].IsObject()) {
         Napi::TypeError::New(env, "Expected options object").ThrowAsJavaScriptException();
         return;
     }
 
-    Napi::Object options = info[0].As<Napi::Object>();
+    Napi::Object options = info[(size_t)0].As<Napi::Object>();
 
     // Required: model path
     if (!options.Has("model") || !options.Get("model").IsString()) {
@@ -682,34 +682,34 @@ Napi::Value Transcribe(const Napi::CallbackInfo& info) {
         return env.Undefined();
     }
 
-    if (!info[0].IsObject()) {
+    if (!info[(size_t)0].IsObject()) {
         Napi::TypeError::New(env, "First argument must be a WhisperContext")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    if (!info[1].IsObject()) {
+    if (!info[(size_t)1].IsObject()) {
         Napi::TypeError::New(env, "Second argument must be an options object")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    if (!info[2].IsFunction()) {
+    if (!info[(size_t)2].IsFunction()) {
         Napi::TypeError::New(env, "Third argument must be a callback function")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     // Get context wrapper
-    WhisperContext* wrapper = Napi::ObjectWrap<WhisperContext>::Unwrap(info[0].As<Napi::Object>());
+    WhisperContext* wrapper = Napi::ObjectWrap<WhisperContext>::Unwrap(info[(size_t)0].As<Napi::Object>());
     if (!wrapper->IsValid()) {
         Napi::Error::New(env, "WhisperContext has been freed")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    Napi::Object options = info[1].As<Napi::Object>();
-    Napi::Function callback = info[2].As<Napi::Function>();
+    Napi::Object options = info[(size_t)1].As<Napi::Object>();
+    Napi::Function callback = info[(size_t)2].As<Napi::Function>();
 
     // Parse all options into transcribe_params
     transcribe_params params;
@@ -1034,13 +1034,13 @@ private:
 Napi::Value LegacyWhisper(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() <= 0 || !info[0].IsObject()) {
+    if (info.Length() <= 0 || !info[(size_t)0].IsObject()) {
         Napi::TypeError::New(env, "object expected").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     legacy_whisper_params params;
-    Napi::Object options = info[0].As<Napi::Object>();
+    Napi::Object options = info[(size_t)0].As<Napi::Object>();
 
     params.language   = get_string(options, "language", params.language);
     params.model      = get_string(options, "model", params.model);
@@ -1083,7 +1083,7 @@ Napi::Value LegacyWhisper(const Napi::CallbackInfo& info) {
         }
     }
 
-    Napi::Function callback = info[1].As<Napi::Function>();
+    Napi::Function callback = info[(size_t)1].As<Napi::Function>();
 
     Napi::Function progress_callback;
     if (options.Has("progress_callback") && options.Get("progress_callback").IsFunction()) {
@@ -1145,12 +1145,12 @@ VadContext::VadContext(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<VadContext>(info) {
     Napi::Env env = info.Env();
 
-    if (info.Length() < 1 || !info[0].IsObject()) {
+    if (info.Length() < 1 || !info[(size_t)0].IsObject()) {
         Napi::TypeError::New(env, "Expected options object").ThrowAsJavaScriptException();
         return;
     }
 
-    Napi::Object options = info[0].As<Napi::Object>();
+    Napi::Object options = info[(size_t)0].As<Napi::Object>();
 
     // Required: model path
     if (!options.Has("model") || !options.Get("model").IsString()) {
@@ -1224,13 +1224,13 @@ Napi::Value VadContext::Process(const Napi::CallbackInfo& info) {
     }
 
     // Expect a Float32Array of audio samples
-    if (info.Length() < 1 || !info[0].IsTypedArray()) {
+    if (info.Length() < 1 || !info[(size_t)0].IsTypedArray()) {
         Napi::TypeError::New(env, "Expected Float32Array of audio samples")
             .ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    Napi::Float32Array samples_arr = info[0].As<Napi::Float32Array>();
+    Napi::Float32Array samples_arr = info[(size_t)0].As<Napi::Float32Array>();
     size_t n_samples = samples_arr.ElementLength();
 
     // Copy samples to vector
