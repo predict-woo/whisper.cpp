@@ -26,7 +26,8 @@
   },
   "optionalDependencies": {
     "@whisper-cpp-node/darwin-arm64": "workspace:*",
-    "@whisper-cpp-node/win32-x64": "workspace:*"
+    "@whisper-cpp-node/win32-x64": "workspace:*",
+    "@whisper-cpp-node/win32-ia32": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

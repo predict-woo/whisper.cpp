@@ -9,6 +9,7 @@ import type { WhisperAddon } from "./types";
 const SUPPORTED_PLATFORMS: Record<string, string> = {
   "darwin-arm64": "@whisper-cpp-node/darwin-arm64",
   "win32-x64": "@whisper-cpp-node/win32-x64",
+  "win32-ia32": "@whisper-cpp-node/win32-ia32",
   // Future: add more platforms
   // "darwin-x64": "@whisper-cpp-node/darwin-x64",
   // "linux-x64": "@whisper-cpp-node/linux-x64",
