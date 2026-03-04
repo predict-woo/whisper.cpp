@@ -26,9 +26,14 @@ importers:
       '@whisper-cpp-node/darwin-arm64':
         specifier: workspace:*
         version: link:../darwin-arm64
+      '@whisper-cpp-node/win32-ia32':
+        specifier: workspace:*
+        version: link:../win32-ia32
       '@whisper-cpp-node/win32-x64':
         specifier: workspace:*
         version: link:../win32-x64
+
+  packages/win32-ia32: {}
 
   packages/win32-x64: {}
 
