@@ -381,3 +381,50 @@ if(WIN32 AND WHISPER_OPENVINO_ENABLED)
         endforeach()
     endif()
 endif()
+
+# ============================================================================
+# Copy MSVC runtime DLLs to output directory (Windows)
+# Bundled OpenVINO/TBB DLLs are built with /MD and require these at runtime.
+# Without bundling them, users need to install VC++ Redistributable separately.
+# ============================================================================
+if(MSVC)
+    set(MSVC_RUNTIME_DLLS
+        msvcp140.dll
+        vcruntime140.dll
+        vcruntime140_1.dll
+    )
+
+    # Find MSVC redist directory from compiler path
+    get_filename_component(MSVC_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    # Compiler is at: .../MSVC/<ver>/bin/Host<arch>/<arch>/cl.exe
+    # Redist is at:   .../MSVC/<ver>/Redist/MSVC/<redist_ver>/<arch>/Microsoft.VC143.CRT/
+    get_filename_component(MSVC_TOOLS_DIR "${MSVC_COMPILER_DIR}/../../.." ABSOLUTE)
+
+    # Determine target architecture for redist path
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(MSVC_REDIST_ARCH "x64")
+    else()
+        set(MSVC_REDIST_ARCH "x86")
+    endif()
+
+    # Search for redist DLLs
+    file(GLOB MSVC_REDIST_DIRS "${MSVC_TOOLS_DIR}/Redist/MSVC/*/")
+    foreach(redist_dir ${MSVC_REDIST_DIRS})
+        set(MSVC_CRT_DIR "${redist_dir}${MSVC_REDIST_ARCH}/Microsoft.VC143.CRT")
+        if(IS_DIRECTORY "${MSVC_CRT_DIR}")
+            message(STATUS "MSVC CRT directory: ${MSVC_CRT_DIR}")
+            foreach(dll ${MSVC_RUNTIME_DLLS})
+                set(dll_path "${MSVC_CRT_DIR}/${dll}")
+                if(EXISTS "${dll_path}")
+                    add_custom_command(TARGET ${TARGET} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                            "${dll_path}"
+                            "$<TARGET_FILE_DIR:${TARGET}>"
+                        COMMENT "Copying MSVC runtime: ${dll}"
+                    )
+                endif()
+            endforeach()
+            break()
+        endif()
+    endforeach()
+endif()

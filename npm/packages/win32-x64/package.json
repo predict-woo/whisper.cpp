@@ -1,6 +1,6 @@
 {
   "name": "@whisper-cpp-node/win32-x64",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "whisper.cpp native addon for Windows x64 with Vulkan and OpenVINO acceleration",
   "license": "MIT",
   "repository": {
@@ -23,7 +23,10 @@
     "openvino_auto_plugin.dll",
     "openvino_ir_frontend.dll",
     "tbb12.dll",
-    "pugixml.dll"
+    "pugixml.dll",
+    "msvcp140.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll"
   ],
   "publishConfig": {
     "access": "public"

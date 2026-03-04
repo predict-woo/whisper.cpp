@@ -16,7 +16,9 @@ if (!fs.existsSync(packageDir)) {
 }
 
 // Possible source directories for the built addon
+// RelWithDebInfo is preferred (enables Sentry PDB symbolication)
 const possibleSourceDirs = [
+  path.join(whisperRoot, "examples", "addon.node", "build", "RelWithDebInfo"),
   path.join(whisperRoot, "examples", "addon.node", "build", "Release"),
   path.join(whisperRoot, "build", "examples", "addon.node"),
 ];
@@ -80,5 +82,31 @@ if (os.platform() === "win32") {
   if (copiedDlls > 0) {
     const dllSizeMb = (totalDllSize / (1024 * 1024)).toFixed(2);
     console.log(`Copied ${copiedDlls} OpenVINO DLLs (${dllSizeMb} MB)`);
+  }
+
+  // Copy MSVC runtime DLLs (required by bundled OpenVINO/TBB DLLs)
+  const msvcDlls = [
+    "msvcp140.dll",
+    "vcruntime140.dll",
+    "vcruntime140_1.dll",
+  ];
+
+  let copiedMsvc = 0;
+  let totalMsvcSize = 0;
+
+  for (const dll of msvcDlls) {
+    const dllSource = path.join(sourceDir, dll);
+    if (fs.existsSync(dllSource)) {
+      const dllDest = path.join(packageDir, dll);
+      fs.copyFileSync(dllSource, dllDest);
+      const dllStats = fs.statSync(dllDest);
+      totalMsvcSize += dllStats.size;
+      copiedMsvc++;
+    }
+  }
+
+  if (copiedMsvc > 0) {
+    const msvcSizeMb = (totalMsvcSize / (1024 * 1024)).toFixed(2);
+    console.log(`Copied ${copiedMsvc} MSVC runtime DLLs (${msvcSizeMb} MB)`);
   }
 }
