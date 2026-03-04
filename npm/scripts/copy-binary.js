@@ -84,11 +84,12 @@ if (os.platform() === "win32") {
     console.log(`Copied ${copiedDlls} OpenVINO DLLs (${dllSizeMb} MB)`);
   }
 
-  // Copy MSVC runtime DLLs (required by bundled OpenVINO/TBB DLLs)
+  // Copy MSVC runtime DLLs (required by bundled OpenVINO/TBB DLLs and OpenMP)
   const msvcDlls = [
     "msvcp140.dll",
     "vcruntime140.dll",
     "vcruntime140_1.dll",
+    "vcomp140.dll",
   ];
 
   let copiedMsvc = 0;

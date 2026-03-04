@@ -388,12 +388,6 @@ endif()
 # Without bundling them, users need to install VC++ Redistributable separately.
 # ============================================================================
 if(MSVC)
-    set(MSVC_RUNTIME_DLLS
-        msvcp140.dll
-        vcruntime140.dll
-        vcruntime140_1.dll
-    )
-
     # Find MSVC redist directory from compiler path
     get_filename_component(MSVC_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
     # Compiler is at: .../MSVC/<ver>/bin/Host<arch>/<arch>/cl.exe
@@ -407,13 +401,19 @@ if(MSVC)
         set(MSVC_REDIST_ARCH "x86")
     endif()
 
-    # Search for redist DLLs
+    # Search for CRT DLLs (msvcp140, vcruntime140, vcruntime140_1)
+    set(MSVC_CRT_DLLS
+        msvcp140.dll
+        vcruntime140.dll
+        vcruntime140_1.dll
+    )
+
     file(GLOB MSVC_REDIST_DIRS "${MSVC_TOOLS_DIR}/Redist/MSVC/*/")
     foreach(redist_dir ${MSVC_REDIST_DIRS})
         set(MSVC_CRT_DIR "${redist_dir}${MSVC_REDIST_ARCH}/Microsoft.VC143.CRT")
         if(IS_DIRECTORY "${MSVC_CRT_DIR}")
             message(STATUS "MSVC CRT directory: ${MSVC_CRT_DIR}")
-            foreach(dll ${MSVC_RUNTIME_DLLS})
+            foreach(dll ${MSVC_CRT_DLLS})
                 set(dll_path "${MSVC_CRT_DIR}/${dll}")
                 if(EXISTS "${dll_path}")
                     add_custom_command(TARGET ${TARGET} POST_BUILD
@@ -424,6 +424,24 @@ if(MSVC)
                     )
                 endif()
             endforeach()
+            break()
+        endif()
+    endforeach()
+
+    # Search for OpenMP runtime DLL (vcomp140)
+    foreach(redist_dir ${MSVC_REDIST_DIRS})
+        set(MSVC_OMP_DIR "${redist_dir}${MSVC_REDIST_ARCH}/Microsoft.VC143.OpenMP")
+        if(IS_DIRECTORY "${MSVC_OMP_DIR}")
+            set(vcomp_path "${MSVC_OMP_DIR}/vcomp140.dll")
+            if(EXISTS "${vcomp_path}")
+                message(STATUS "MSVC OpenMP directory: ${MSVC_OMP_DIR}")
+                add_custom_command(TARGET ${TARGET} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                        "${vcomp_path}"
+                        "$<TARGET_FILE_DIR:${TARGET}>"
+                    COMMENT "Copying MSVC runtime: vcomp140.dll"
+                )
+            endif()
             break()
         endif()
     endforeach()
