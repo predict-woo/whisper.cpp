@@ -278,6 +278,23 @@ if(MSVC AND ADDON_VULKAN)
 endif()
 
 # ============================================================================
+# Delay-load OpenVINO DLLs (Windows) - allows graceful fallback on non-Intel
+# Without this, the addon fails to load entirely if OpenVINO DLLs are missing
+# (e.g. inside Electron .asar archives, or on AMD/non-Intel systems).
+# With /DELAYLOAD, the DLLs are only loaded when OpenVINO is actually used.
+# ============================================================================
+if(MSVC AND WHISPER_OPENVINO_ENABLED)
+    target_link_options(${TARGET} PRIVATE
+        "/DELAYLOAD:openvino.dll"
+        "/DELAYLOAD:openvino_ir_frontend.dll"
+        "/DELAYLOAD:tbb12.dll"
+        "/DELAYLOAD:pugixml.dll"
+    )
+    # delayimp.lib may already be linked (from Vulkan above), but CMake deduplicates
+    target_link_libraries(${TARGET} delayimp.lib)
+endif()
+
+# ============================================================================
 # Copy runtime DLLs to output directory (Windows)
 # ============================================================================
 if(WIN32 AND WHISPER_OPENVINO_ENABLED)

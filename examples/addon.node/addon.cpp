@@ -191,6 +191,15 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
     // just without the OpenVINO encoder acceleration.
 #ifdef WHISPER_USE_OPENVINO
     if (get_bool(options, "use_openvino", false)) {
+#ifdef _WIN32
+        // Check if OpenVINO DLLs are available (probed during module init).
+        // The DLLs are delay-loaded, so the addon loads fine without them,
+        // but calling into OpenVINO without the DLLs would crash.
+        const char* ov_unavailable = getenv("WHISPER_ADDON_OPENVINO_UNAVAILABLE");
+        if (ov_unavailable && ov_unavailable[0] == '1') {
+            fprintf(stderr, "[whisper-addon] OpenVINO DLLs not found, ignoring use_openvino flag\n");
+        } else {
+#endif
         std::string openvino_model = get_string(options, "openvino_model_path", "");
         std::string openvino_device = get_string(options, "openvino_device", "CPU");
         std::string openvino_cache = get_string(options, "openvino_cache_dir", "");
@@ -202,6 +211,9 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
         if (ret != 0) {
             fprintf(stderr, "[whisper-addon] OpenVINO encoder init failed, continuing without it...\n");
         }
+#ifdef _WIN32
+        }
+#endif
     }
 #else
     if (get_bool(options, "use_openvino", false)) {
@@ -1282,6 +1294,19 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
             FreeLibrary(vkDll);
         } else {
             _putenv_s("GGML_DISABLE_VULKAN", "1");
+        }
+    }
+
+    // Probe for OpenVINO runtime availability. The DLLs are delay-loaded
+    // (/DELAYLOAD in CMakeLists.txt) so the addon can load without them.
+    // If openvino.dll is missing, set a flag so we can warn users at
+    // context creation time rather than crashing on first OpenVINO call.
+    {
+        HMODULE ovDll = LoadLibraryA("openvino.dll");
+        if (ovDll) {
+            FreeLibrary(ovDll);
+        } else {
+            _putenv_s("WHISPER_ADDON_OPENVINO_UNAVAILABLE", "1");
         }
     }
 #endif

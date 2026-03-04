@@ -90,8 +90,16 @@ export function loadNativeAddon(): WhisperAddon {
       );
     }
 
+    const hint =
+      process.platform === "win32" &&
+      err.message?.includes("The specified module could not be found")
+        ? "\nThis usually means a required DLL dependency is missing. " +
+          "If running inside Electron, ensure native addon DLLs are excluded " +
+          "from asar packaging (use asarUnpack in your build config)."
+        : "";
+
     throw new Error(
-      `Failed to load native addon from ${packageName}: ${err.message}`
+      `Failed to load native addon from ${packageName}: ${err.message}${hint}`
     );
   }
 }
