@@ -25,6 +25,14 @@ option(ADDON_VULKAN   "Enable Vulkan GPU support (Windows/Linux)"  ${ADDON_VULKA
 option(ADDON_OPENVINO "Enable OpenVINO encoder support (Intel)"    ${ADDON_OPENVINO_DEFAULT})
 
 # ============================================================================
+# MSVC static runtime - eliminates VC++ Redistributable requirement for users
+# Must be set before any targets (add_library/add_subdirectory)
+# ============================================================================
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
+endif()
+
+# ============================================================================
 # MSVC UTF-8 encoding fix (must be set early, before adding subdirectories)
 # whisper.cpp contains Unicode characters that MSVC can't handle without this
 # ============================================================================
