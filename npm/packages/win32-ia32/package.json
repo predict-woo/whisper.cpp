@@ -1,6 +1,6 @@
 {
   "name": "@whisper-cpp-node/win32-ia32",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "whisper.cpp native addon for Windows x86 (32-bit)",
   "license": "MIT",
   "repository": {
