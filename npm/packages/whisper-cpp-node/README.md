@@ -10,6 +10,7 @@ Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - f
 - **OpenVINO**: Optional Intel CPU/GPU encoder acceleration (Windows/Linux)
 - **Streaming VAD**: Built-in Silero voice activity detection
 - **TypeScript**: Full type definitions included
+- **GPU Discovery**: Enumerate available GPU devices for multi-GPU selection
 - **Self-contained**: No external dependencies, just install and use
 
 ## Requirements
@@ -137,7 +138,7 @@ interface WhisperContextOptions {
   openvino_model_path?: string; // Path to OpenVINO encoder model (auto-derived)
   openvino_cache_dir?: string;  // Cache dir for compiled OpenVINO models
   flash_attn?: boolean;    // Enable Flash Attention (default: false)
-  gpu_device?: number;     // GPU device index (default: 0)
+  gpu_device?: number;     // GPU device index (default: 0, see getGpuDevices())
   dtw?: string;            // DTW preset for word timestamps
   no_prints?: boolean;     // Suppress log output (default: false)
 }
@@ -227,6 +228,39 @@ interface TranscribeResult {
 // Segment is a tuple: [start, end, text]
 type TranscriptSegment = [string, string, string];
 // Example: ["00:00:00,000", "00:00:02,500", " Hello world"]
+```
+
+### `getGpuDevices()`
+
+Enumerate available GPU backend devices. Returns an array of GPU/IGPU devices. Never throws — returns an empty array if no GPUs are available.
+
+```typescript
+import { getGpuDevices, createWhisperContext } from "whisper-cpp-node";
+
+const gpus = getGpuDevices();
+for (const gpu of gpus) {
+  console.log(`[${gpu.index}] ${gpu.description} (${gpu.type}, ${(gpu.memory_total / 1e9).toFixed(1)} GB)`);
+}
+// Example output:
+// [0] NVIDIA GeForce RTX 4050 Laptop GPU (gpu, 6.0 GB)
+// [1] AMD Radeon 740M (igpu, 8.0 GB)
+
+// Use a specific GPU for transcription:
+const ctx = createWhisperContext({
+  model: "./models/ggml-base.en.bin",
+  gpu_device: gpus[0].index,
+});
+```
+
+```typescript
+interface GpuDevice {
+  index: number;         // GPU-relative index (matches gpu_device option)
+  name: string;          // Backend device name (e.g., "Vulkan0")
+  description: string;   // Human-readable name (e.g., "NVIDIA GeForce RTX 4050")
+  type: "gpu" | "igpu";  // Discrete or integrated GPU
+  memory_free: number;   // Free memory in bytes
+  memory_total: number;  // Total memory in bytes
+}
 ```
 
 ### `createVadContext(options)`
