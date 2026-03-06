@@ -8,6 +8,7 @@ import type {
   VadContextOptions,
   TranscribeOptions,
   TranscribeResult,
+  GpuDevice,
 } from "./types";
 
 // Re-export types
@@ -26,6 +27,7 @@ export type {
   VadContext,
   WhisperContextConstructor,
   VadContextConstructor,
+  GpuDevice,
 } from "./types";
 
 // Load native addon
@@ -90,6 +92,26 @@ export function createVadContext(options: VadContextOptions): VadContext {
   return new addon.VadContext(options);
 }
 
+/**
+ * Enumerate available GPU backend devices.
+ * Returns an array of GPU/IGPU devices with their properties.
+ * The `index` field matches what `gpu_device` option expects in WhisperContextOptions.
+ * Never throws — returns an empty array if no GPUs are available or on any error.
+ *
+ * @example
+ * ```typescript
+ * const gpus = getGpuDevices();
+ * for (const gpu of gpus) {
+ *   console.log(`[${gpu.index}] ${gpu.description} (${gpu.type}, ${(gpu.memory_total / 1e9).toFixed(1)} GB)`);
+ * }
+ * // Use a specific GPU:
+ * const ctx = createWhisperContext({ model: '...', gpu_device: gpus[1].index });
+ * ```
+ */
+export function getGpuDevices(): GpuDevice[] {
+  return addon.getGpuDevices();
+}
+
 // Default export with all functionality
 export default {
   WhisperContext: addon.WhisperContext,
@@ -98,4 +120,5 @@ export default {
   transcribeAsync,
   createWhisperContext,
   createVadContext,
+  getGpuDevices,
 };

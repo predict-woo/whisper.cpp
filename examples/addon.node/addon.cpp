@@ -3,9 +3,11 @@
 #include "common-whisper.h"
 
 #include "whisper.h"
+#include "ggml-backend.h"
 
 #include <string>
 #include <thread>
+#include <stdexcept>
 #include <vector>
 #include <cmath>
 #include <cstdint>
@@ -168,20 +170,44 @@ WhisperContext::WhisperContext(const Napi::CallbackInfo& info)
         whisper_log_set(cb_log_disable, NULL);
     }
 
-    // Load the model
-    ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cparams);
+    // Load the model — wrap in try/catch to handle GPU driver exceptions
+    // (e.g., Vulkan vk::PhysicalDevice::createDevice() throwing on incompatible GPUs)
+    std::string gpu_error;
+
+    try {
+        ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cparams);
+    } catch (const std::exception& e) {
+        fprintf(stderr, "[whisper-addon] GPU initialization threw C++ exception: %s\n", e.what());
+        ctx_ = nullptr;
+        gpu_error = std::string("GPU initialization failed: ") + e.what();
+    } catch (...) {
+        fprintf(stderr, "[whisper-addon] GPU initialization threw unknown C++ exception\n");
+        ctx_ = nullptr;
+        gpu_error = "GPU initialization failed: unknown C++ exception";
+    }
 
     // GPU fallback: if init failed with GPU enabled, retry with CPU only
     if (ctx_ == nullptr && cparams.use_gpu) {
-        fprintf(stderr, "[whisper-addon] GPU initialization failed, falling back to CPU...\n");
+        fprintf(stderr, "[whisper-addon] Falling back to CPU...\n");
         struct whisper_context_params cpu_params = cparams;
         cpu_params.use_gpu = false;
-        ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cpu_params);
+        try {
+            ctx_ = whisper_init_from_file_with_params(model_path.c_str(), cpu_params);
+        } catch (const std::exception& e) {
+            fprintf(stderr, "[whisper-addon] CPU fallback also threw: %s\n", e.what());
+            ctx_ = nullptr;
+        } catch (...) {
+            fprintf(stderr, "[whisper-addon] CPU fallback threw unknown exception\n");
+            ctx_ = nullptr;
+        }
     }
 
     if (ctx_ == nullptr) {
-        Napi::Error::New(env, "Failed to initialize whisper context from model: " + model_path)
-            .ThrowAsJavaScriptException();
+        std::string error_msg = "Failed to initialize whisper context from model: " + model_path;
+        if (!gpu_error.empty()) {
+            error_msg += " (" + gpu_error + ")";
+        }
+        Napi::Error::New(env, error_msg).ThrowAsJavaScriptException();
         return;
     }
 
@@ -1279,6 +1305,56 @@ Napi::Value VadContext::GetSampleRate(const Napi::CallbackInfo& info) {
 }
 
 // ============================================================================
+// GetGpuDevices - Enumerate available GPU backend devices
+// ============================================================================
+
+Napi::Value GetGpuDevices(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    try {
+        Napi::Array result = Napi::Array::New(env);
+        uint32_t gpu_index = 0;
+
+        const size_t dev_count = ggml_backend_dev_count();
+        for (size_t i = 0; i < dev_count; i++) {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            if (dev == nullptr) {
+                continue;
+            }
+
+            enum ggml_backend_dev_type dev_type = ggml_backend_dev_type(dev);
+            if (dev_type != GGML_BACKEND_DEVICE_TYPE_GPU &&
+                dev_type != GGML_BACKEND_DEVICE_TYPE_IGPU) {
+                continue;
+            }
+
+            struct ggml_backend_dev_props props;
+            ggml_backend_dev_get_props(dev, &props);
+
+            Napi::Object device_obj = Napi::Object::New(env);
+            device_obj.Set("index", Napi::Number::New(env, gpu_index));
+            device_obj.Set("name", Napi::String::New(env, props.name ? props.name : ""));
+            device_obj.Set("description", Napi::String::New(env, props.description ? props.description : ""));
+            device_obj.Set("type", Napi::String::New(env,
+                dev_type == GGML_BACKEND_DEVICE_TYPE_IGPU ? "igpu" : "gpu"));
+            device_obj.Set("memory_free", Napi::Number::New(env, static_cast<double>(props.memory_free)));
+            device_obj.Set("memory_total", Napi::Number::New(env, static_cast<double>(props.memory_total)));
+
+            result.Set(gpu_index, device_obj);
+            gpu_index++;
+        }
+
+        return result;
+    } catch (const std::exception& e) {
+        fprintf(stderr, "[whisper-addon] GetGpuDevices threw C++ exception: %s\n", e.what());
+        return Napi::Array::New(env);
+    } catch (...) {
+        fprintf(stderr, "[whisper-addon] GetGpuDevices threw unknown C++ exception\n");
+        return Napi::Array::New(env);
+    }
+}
+
+// ============================================================================
 // Module initialization
 // ============================================================================
 
@@ -1322,6 +1398,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     // Export legacy whisper function for backwards compatibility
     exports.Set("whisper", Napi::Function::New(env, LegacyWhisper));
+
+    // Export GPU device enumeration function
+    exports.Set("getGpuDevices", Napi::Function::New(env, GetGpuDevices));
 
     return exports;
 }

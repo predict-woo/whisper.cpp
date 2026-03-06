@@ -8,7 +8,7 @@ export interface WhisperContextOptions {
   use_gpu?: boolean;
   /** Enable Flash Attention (default: false) */
   flash_attn?: boolean;
-  /** GPU device index (default: 0) */
+  /** GPU device index to use (default: 0). Use getGpuDevices() to list available devices. */
   gpu_device?: number;
   /** Enable Core ML acceleration on macOS (default: false) */
   use_coreml?: boolean;
@@ -267,6 +267,24 @@ export interface TranscribeResult {
 }
 
 /**
+ * GPU device information returned by getGpuDevices()
+ */
+export interface GpuDevice {
+  /** GPU-relative index (0, 1, 2...) — matches what gpu_device option expects */
+  index: number;
+  /** Backend device name (e.g., "Vulkan0") */
+  name: string;
+  /** Human-readable device description (e.g., "NVIDIA GeForce RTX 4050 Laptop GPU") */
+  description: string;
+  /** Device type: "gpu" for discrete, "igpu" for integrated */
+  type: "gpu" | "igpu";
+  /** Free device memory in bytes */
+  memory_free: number;
+  /** Total device memory in bytes */
+  memory_total: number;
+}
+
+/**
  * Options for creating a VadContext
  */
 export interface VadContextOptions {
@@ -342,4 +360,5 @@ export interface WhisperAddon {
     callback: TranscribeCallback
   ) => void;
   whisper: Record<string, unknown>;
+  getGpuDevices: () => GpuDevice[];
 }
