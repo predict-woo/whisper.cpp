@@ -35,16 +35,16 @@ def build_program(encoder):
     conv1_b = to_np(encoder.conv1.bias, np.float16)
     conv2_w = to_np(encoder.conv2.weight, np.float16)
     conv2_b = to_np(encoder.conv2.bias, np.float16)
-    pos = to_np(encoder.embed_positions.weight, np.float16)[None, :, :]
+    pos = to_np(encoder.embed_positions.weight, np.float16).T[None, :, None, :]
     final_ln_gamma = to_np(encoder.layer_norm.weight, np.float16)
     final_ln_beta = to_np(encoder.layer_norm.bias, np.float16)
     eps = np.float16(np.finfo(np.float16).eps)
     scale_denom = np.float16(127.0)
 
-    def dyn_token_fake_quant(x, name):
+    def dyn_token_fake_quant(x, axes, name):
         max_abs = mb.reduce_max(
             x=mb.abs(x=x, name=f"{name}_abs"),
-            axes=[2],
+            axes=axes,
             keep_dims=True,
             name=f"{name}_amax",
         )
@@ -57,27 +57,42 @@ def build_program(encoder):
         x = mb.cast(x=x, dtype="fp16", name=f"{name}_dq_cast")
         return mb.mul(x=x, y=scale, name=f"{name}_dq")
 
-    def linear_weight(module, name):
+    def conv1x1_weight(module, name):
         return mb.constexpr_affine_dequantize(
-            quantized_data=to_np(module.weight, np.int8),
+            quantized_data=to_np(module.weight, np.int8)[:, :, None, None],
             zero_point=np.array(0, dtype=np.int8),
             scale=to_np(module.weight_scale, np.float16).reshape(-1),
             axis=np.int32(0),
             name=f"{name}_weight",
         )
 
-    def quantized_linear(x, module, name):
-        x = dyn_token_fake_quant(x, f"{name}_act")
-        weight = linear_weight(module, name)
+    def quantized_conv1x1(x, module, name):
+        x = dyn_token_fake_quant(x, axes=[1, 2], name=f"{name}_act")
+        weight = conv1x1_weight(module, name)
         bias = to_np(module.bias, np.float16)
         if bias is None:
-            return mb.linear(x=x, weight=weight, name=name)
-        return mb.linear(x=x, weight=weight, bias=bias, name=name)
+            return mb.conv(
+                x=x,
+                weight=weight,
+                strides=[1, 1],
+                pad_type="valid",
+                pad=[0, 0, 0, 0],
+                name=name,
+            )
+        return mb.conv(
+            x=x,
+            weight=weight,
+            bias=bias,
+            strides=[1, 1],
+            pad_type="valid",
+            pad=[0, 0, 0, 0],
+            name=name,
+        )
 
     def layer_norm(x, gamma, beta, epsilon, name):
         return mb.layer_norm(
             x=x,
-            axes=[-1],
+            axes=[1],
             gamma=gamma,
             beta=beta,
             epsilon=np.float16(epsilon),
@@ -110,7 +125,7 @@ def build_program(encoder):
             name="conv2",
         )
         x = mb.gelu(x=x, mode="EXACT", name="conv2_gelu")
-        x = mb.transpose(x=x, perm=[0, 2, 1], name="post_conv_transpose")
+        x = mb.expand_dims(x=x, axes=[2], name="post_conv_expand")
         x = mb.add(x=x, y=pos, name="add_positional_embedding")
 
         for idx, layer in enumerate(encoder.layers):
@@ -124,27 +139,34 @@ def build_program(encoder):
                 f"{prefix}_self_attn_ln",
             )
 
-            q = quantized_linear(x_ln, layer.self_attn.q_proj, f"{prefix}_q_proj")
-            k = quantized_linear(x_ln, layer.self_attn.k_proj, f"{prefix}_k_proj")
-            v = quantized_linear(x_ln, layer.self_attn.v_proj, f"{prefix}_v_proj")
+            q = quantized_conv1x1(x_ln, layer.self_attn.q_proj, f"{prefix}_q_proj")
+            k = quantized_conv1x1(x_ln, layer.self_attn.k_proj, f"{prefix}_k_proj")
+            v = quantized_conv1x1(x_ln, layer.self_attn.v_proj, f"{prefix}_v_proj")
 
             q = mb.mul(x=q, y=np.float16(layer.self_attn.scaling), name=f"{prefix}_q_scale")
 
-            q = mb.reshape(x=q, shape=[1, 1500, layer.self_attn.num_heads, layer.self_attn.head_dim], name=f"{prefix}_q_reshape")
-            k = mb.reshape(x=k, shape=[1, 1500, layer.self_attn.num_heads, layer.self_attn.head_dim], name=f"{prefix}_k_reshape")
-            v = mb.reshape(x=v, shape=[1, 1500, layer.self_attn.num_heads, layer.self_attn.head_dim], name=f"{prefix}_v_reshape")
+            q_heads = mb.split(x=q, num_splits=layer.self_attn.num_heads, axis=1, name=f"{prefix}_q_split")
+            k_t = mb.transpose(x=k, perm=[0, 3, 2, 1], name=f"{prefix}_k_transpose")
+            k_heads = mb.split(x=k_t, num_splits=layer.self_attn.num_heads, axis=3, name=f"{prefix}_k_split")
+            v_heads = mb.split(x=v, num_splits=layer.self_attn.num_heads, axis=1, name=f"{prefix}_v_split")
 
-            q = mb.transpose(x=q, perm=[0, 2, 1, 3], name=f"{prefix}_q_transpose")
-            k = mb.transpose(x=k, perm=[0, 2, 1, 3], name=f"{prefix}_k_transpose")
-            v = mb.transpose(x=v, perm=[0, 2, 1, 3], name=f"{prefix}_v_transpose")
+            attn_heads = []
+            for head_idx, (q_head, k_head, v_head) in enumerate(zip(q_heads, k_heads, v_heads)):
+                scores = mb.einsum(
+                    values=(k_head, q_head),
+                    equation="nchw,nwhu->nchu",
+                    name=f"{prefix}_scores_{head_idx}",
+                )
+                weights = mb.softmax(x=scores, axis=1, name=f"{prefix}_softmax_{head_idx}")
+                head = mb.einsum(
+                    values=(v_head, weights),
+                    equation="nchw,nwhu->nchu",
+                    name=f"{prefix}_attn_{head_idx}",
+                )
+                attn_heads.append(head)
 
-            attn = mb.matmul(x=q, y=k, transpose_y=True, name=f"{prefix}_attn_scores")
-            attn = mb.softmax(x=attn, axis=-1, name=f"{prefix}_attn_softmax")
-            attn = mb.matmul(x=attn, y=v, name=f"{prefix}_attn_values")
-            attn = mb.transpose(x=attn, perm=[0, 2, 1, 3], name=f"{prefix}_attn_transpose")
-            attn = mb.reshape(x=attn, shape=[1, 1500, 1280], name=f"{prefix}_attn_merge")
-
-            attn = quantized_linear(attn, layer.self_attn.out_proj, f"{prefix}_out_proj")
+            attn = mb.concat(values=attn_heads, axis=1, name=f"{prefix}_attn_concat")
+            attn = quantized_conv1x1(attn, layer.self_attn.out_proj, f"{prefix}_out_proj")
             x = mb.add(x=residual, y=attn, name=f"{prefix}_residual_1")
 
             residual = x
@@ -155,12 +177,14 @@ def build_program(encoder):
                 layer.final_layer_norm.eps,
                 f"{prefix}_ffn_ln",
             )
-            x_ff = quantized_linear(x_ln, layer.fc1, f"{prefix}_fc1")
+            x_ff = quantized_conv1x1(x_ln, layer.fc1, f"{prefix}_fc1")
             x_ff = mb.gelu(x=x_ff, mode="EXACT", name=f"{prefix}_fc1_gelu")
-            x_ff = quantized_linear(x_ff, layer.fc2, f"{prefix}_fc2")
+            x_ff = quantized_conv1x1(x_ff, layer.fc2, f"{prefix}_fc2")
             x = mb.add(x=residual, y=x_ff, name=f"{prefix}_residual_2")
 
         x = layer_norm(x, final_ln_gamma, final_ln_beta, encoder.layer_norm.eps, "encoder_final_ln")
+        x = mb.squeeze(x=x, axes=[2], name="final_squeeze")
+        x = mb.transpose(x=x, perm=[0, 2, 1], name="final_transpose")
         return mb.cast(x=x, dtype="fp32", name="output")
 
     return prog
