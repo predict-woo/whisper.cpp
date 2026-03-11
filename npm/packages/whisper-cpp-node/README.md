@@ -1,5 +1,7 @@
 # whisper-cpp-node
 
+Deprecated. Use `pyannote-cpp-node` instead. The low-level whisper/VAD API now lives there.
+
 Node.js bindings for [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - fast speech-to-text with GPU acceleration.
 
 ## Features
