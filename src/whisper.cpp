@@ -22,6 +22,7 @@
 #include <cmath>
 #include <climits>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -3331,6 +3332,10 @@ static std::vector<whisper_vocab::id> tokenize(const whisper_vocab & vocab, cons
 #ifdef WHISPER_USE_COREML
 // replace .bin with -encoder.mlmodelc
 static std::string whisper_get_coreml_path_encoder(std::string path_bin) {
+    if (const char * path_override = std::getenv("WHISPER_COREML_ENCODER_PATH")) {
+        return std::string(path_override);
+    }
+
     auto pos = path_bin.rfind('.');
     if (pos != std::string::npos) {
         path_bin = path_bin.substr(0, pos);
