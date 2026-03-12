@@ -30,7 +30,7 @@ def load_encoder(model_path: str):
     return model.model.encoder
 
 
-def build_program(encoder):
+def build_program(encoder, target):
     conv1_w = to_np(encoder.conv1.weight, np.float16)
     conv1_b = to_np(encoder.conv1.bias, np.float16)
     conv2_w = to_np(encoder.conv2.weight, np.float16)
@@ -58,16 +58,26 @@ def build_program(encoder):
         return mb.mul(x=x, y=scale, name=f"{name}_dq")
 
     def conv1x1_weight(module, name):
+        quantized_weight = to_np(module.weight, np.int8)[:, :, None, None]
+        weight_scale = to_np(module.weight_scale, np.float16).reshape(-1, 1, 1, 1)
+        if target >= ct.target.iOS18:
+            return mb.constexpr_blockwise_shift_scale(
+                data=quantized_weight,
+                scale=weight_scale,
+                offset=np.zeros_like(weight_scale, dtype=np.int8),
+                name=f"{name}_weight",
+            )
         return mb.constexpr_affine_dequantize(
-            quantized_data=to_np(module.weight, np.int8)[:, :, None, None],
+            quantized_data=quantized_weight,
             zero_point=np.array(0, dtype=np.int8),
-            scale=to_np(module.weight_scale, np.float16).reshape(-1),
+            scale=weight_scale.reshape(-1),
             axis=np.int32(0),
             name=f"{name}_weight",
         )
 
-    def quantized_conv1x1(x, module, name):
-        x = dyn_token_fake_quant(x, axes=[1, 2], name=f"{name}_act")
+    def quantized_conv1x1(x, module, name, prequantized_input=False):
+        if not prequantized_input:
+            x = dyn_token_fake_quant(x, axes=[1, 2], name=f"{name}_act")
         weight = conv1x1_weight(module, name)
         bias = to_np(module.bias, np.float16)
         if bias is None:
@@ -101,7 +111,7 @@ def build_program(encoder):
 
     @mb.program(
         input_specs=[mb.TensorSpec(shape=(1, 128, 3000), dtype=ct.converters.mil.mil.types.fp32)],
-        opset_version=ct.target.iOS17,
+        opset_version=target,
     )
     def prog(logmel_data):
         x = mb.cast(x=logmel_data, dtype="fp16", name="input_fp16")
@@ -139,9 +149,27 @@ def build_program(encoder):
                 f"{prefix}_self_attn_ln",
             )
 
-            q = quantized_conv1x1(x_ln, layer.self_attn.q_proj, f"{prefix}_q_proj")
-            k = quantized_conv1x1(x_ln, layer.self_attn.k_proj, f"{prefix}_k_proj")
-            v = quantized_conv1x1(x_ln, layer.self_attn.v_proj, f"{prefix}_v_proj")
+            # The compressed checkpoint uses dynamic per-tensor activation quantization.
+            # q/k/v all see the same normalized tensor, so we can share this QDQ once.
+            x_qkv = dyn_token_fake_quant(x_ln, axes=[1, 2], name=f"{prefix}_qkv_act")
+            q = quantized_conv1x1(
+                x_qkv,
+                layer.self_attn.q_proj,
+                f"{prefix}_q_proj",
+                prequantized_input=True,
+            )
+            k = quantized_conv1x1(
+                x_qkv,
+                layer.self_attn.k_proj,
+                f"{prefix}_k_proj",
+                prequantized_input=True,
+            )
+            v = quantized_conv1x1(
+                x_qkv,
+                layer.self_attn.v_proj,
+                f"{prefix}_v_proj",
+                prequantized_input=True,
+            )
 
             q = mb.mul(x=q, y=np.float16(layer.self_attn.scaling), name=f"{prefix}_q_scale")
 
@@ -190,13 +218,13 @@ def build_program(encoder):
     return prog
 
 
-def export_model(model_path: str, output_path: Path):
+def export_model(model_path: str, output_path: Path, target):
     encoder = load_encoder(model_path)
-    program = build_program(encoder)
+    program = build_program(encoder, target)
     mlmodel = ct.convert(
         program,
         convert_to="mlprogram",
-        minimum_deployment_target=ct.target.iOS17,
+        minimum_deployment_target=target,
     )
     mlmodel.save(str(output_path))
 
@@ -207,12 +235,18 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("models/coreml-encoder-large-v3-turbo-w8a8.mlpackage"),
+        default=Path("models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlpackage"),
+    )
+    parser.add_argument(
+        "--target",
+        choices=["iOS17", "iOS18", "iOS26"],
+        default="iOS18",
     )
     args = parser.parse_args()
 
     model_path = args.model_path or snapshot_download(MODEL_ID)
-    export_model(model_path, args.output)
+    target = getattr(ct.target, args.target)
+    export_model(model_path, args.output, target)
     print(args.output)
 
 
