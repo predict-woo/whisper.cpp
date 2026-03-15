@@ -33,3 +33,47 @@ npx sentry-cli debug-files upload --org clap-k5 --project alt-electron \
 # 출시할 바이너리의 debug ID 확인 (0이 아닌 GUID여야 함)
 npx sentry-cli debug-files check "../whisper.cpp/npm/packages/win32-x64/whisper.node"
 ```
+
+## Core ML W8A8 Encoder (Whisper large-v3-turbo)
+
+기본 경로는 `iOS18` 타깃의 W8A8 ANE encoder export다. 기본 export 산출물은:
+
+- `models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlpackage`
+- `models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlmodelc`
+
+### Export / Compile
+
+```bash
+cd ../whisper.cpp
+source .venv-w8a8-ssp/bin/activate
+
+# RedHat compressed-tensors checkpoint에서 Core ML package 생성
+python models/export-whisper-coreml-w8a8.py
+
+# mlpackage -> mlmodelc compile
+xcrun coremlc compile \
+  models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlpackage \
+  models/
+```
+
+필요하면 다른 target을 명시할 수 있다:
+
+```bash
+python models/export-whisper-coreml-w8a8.py --target iOS17 --output models/coreml-encoder-large-v3-turbo-w8a8-ane.mlpackage
+```
+
+### Run / Verify
+
+`whisper-cli`는 기본 encoder bundle 대신 `WHISPER_COREML_ENCODER_PATH` override를 사용할 수 있다.
+
+```bash
+WHISPER_COREML_ENCODER_PATH=models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlmodelc \
+./build/bin/whisper-cli --coreml -m models/ggml-large-v3-turbo-q5_0.bin -f samples/jfk.wav
+```
+
+확인 포인트:
+
+- 로그에 `loading Core ML model from 'models/coreml-encoder-large-v3-turbo-w8a8-ane-ios18-bwss.mlmodelc'` 가 보여야 한다.
+- 로그에 `Core ML model loaded` 가 보여야 한다.
+- `--coreml` 없이는 Core ML encoder를 사용하지 않는다.
+- `system_info: COREML = 1` 는 지원이 빌드되었다는 뜻이지, 실제 사용 중이라는 뜻은 아니다.

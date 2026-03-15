@@ -5,6 +5,7 @@
 .coreml/
 .test/
 .venv/
+.venv-*/
 .vs/
 .vscode/
 .DS_Store
@@ -21,6 +22,9 @@ tmp/
 .build/
 .swiftpm
 *.metallib
+*.pyc
+*.pyo
+__pycache__/
 
 ggml-metal-embed.metal
 ggml-metal-embed.metal.tmp

@@ -22,6 +22,7 @@
 #include <cmath>
 #include <climits>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -3327,6 +3328,7 @@ static std::vector<whisper_vocab::id> tokenize(const whisper_vocab & vocab, cons
 //
 // interface implementation
 //
+
 
 #ifdef WHISPER_USE_OPENVINO
 static std::string whisper_openvino_get_path_cache(std::string path_bin) {
