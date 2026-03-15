@@ -15621,6 +15621,16 @@ static bool ggml_vk_khr_cooperative_matrix_support(const vk::PhysicalDevicePrope
         // while some older hardware (ex. Arc A770) has performance regressions
         return arch == vk_device_architecture::INTEL_XE2;
     case VK_VENDOR_ID_AMD:
+#if defined(_WIN32)
+        if (driver_props.driverID == vk::DriverId::eAmdProprietary &&
+            props.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) {
+            // AMD's Windows iGPU driver currently advertises KHR cooperative matrix
+            // on RDNA3, but large Whisper model loads can fail-fast during Vulkan
+            // tensor buffer allocation on this path. Prefer the stable non-coopmat path.
+            GGML_LOG_WARN("ggml_vulkan: disabling KHR cooperative matrix on AMD Windows iGPU for stability\n");
+            return false;
+        }
+#endif
         if (driver_props.driverID == vk::DriverId::eAmdProprietary || driver_props.driverID == vk::DriverId::eAmdOpenSource) {
             // Workaround for AMD proprietary driver reporting support on all GPUs
             return arch == vk_device_architecture::AMD_RDNA3;
