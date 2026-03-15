@@ -367,6 +367,14 @@ struct transcribe_result {
     std::string error;
 };
 
+    struct streamed_segment {
+        std::string start;
+        std::string end;
+        std::string text;
+        int segment_index;
+        std::vector<std::tuple<std::string, float, int64_t, int64_t, int64_t>> tokens;
+    };
+
 class TranscribeWorker : public Napi::AsyncWorker {
 public:
     TranscribeWorker(
@@ -393,22 +401,14 @@ public:
         }
 
         if (!segment_callback.IsEmpty() && segment_callback.IsFunction()) {
-            segment_tsfn_ = Napi::ThreadSafeFunction::New(
-                env,
-                segment_callback,
-                "Segment Callback",
-                0,
-                1
-            );
+            segment_callback_ref_ = Napi::Persistent(segment_callback);
+            has_segment_callback_ = true;
         }
     }
 
     ~TranscribeWorker() {
         if (tsfn_) {
             tsfn_.Release();
-        }
-        if (segment_tsfn_) {
-            segment_tsfn_.Release();
         }
     }
 
@@ -527,7 +527,7 @@ public:
         };
         wparams.progress_callback_user_data = this;
 
-        if (segment_tsfn_) {
+        if (has_segment_callback_) {
             wparams.new_segment_callback = [](struct whisper_context* ctx, struct whisper_state*, int n_new, void* user_data) {
                 TranscribeWorker* worker = static_cast<TranscribeWorker*>(user_data);
                 worker->OnNewSegment(ctx, n_new);
@@ -593,6 +593,38 @@ public:
             return;
         }
 
+        // Dispatch accumulated segment callbacks synchronously on the JS thread
+        // BEFORE resolving the final callback. This guarantees all on_new_segment
+        // calls complete before the promise resolves (no TSFN race condition).
+        if (!segment_callback_ref_.IsEmpty() && !streamed_segments_.empty()) {
+            Napi::Function segCb = segment_callback_ref_.Value();
+            for (const auto& seg : streamed_segments_) {
+                Napi::Object obj = Napi::Object::New(Env());
+                obj.Set("start", Napi::String::New(Env(), seg.start));
+                obj.Set("end", Napi::String::New(Env(), seg.end));
+                obj.Set("text", Napi::String::New(Env(), seg.text));
+                obj.Set("segment_index", Napi::Number::New(Env(), seg.segment_index));
+                obj.Set("is_partial", Napi::Boolean::New(Env(), false));
+
+                if (!seg.tokens.empty()) {
+                    Napi::Array tokensArray = Napi::Array::New(Env(), seg.tokens.size());
+                    for (size_t k = 0; k < seg.tokens.size(); k++) {
+                        Napi::Object tokenObj = Napi::Object::New(Env());
+                        tokenObj.Set("text", Napi::String::New(Env(), std::get<0>(seg.tokens[k])));
+                        tokenObj.Set("probability", Napi::Number::New(Env(), std::get<1>(seg.tokens[k])));
+                        tokenObj.Set("t0", Napi::Number::New(Env(), std::get<2>(seg.tokens[k])));
+                        tokenObj.Set("t1", Napi::Number::New(Env(), std::get<3>(seg.tokens[k])));
+                        tokenObj.Set("t_dtw", Napi::Number::New(Env(), std::get<4>(seg.tokens[k])));
+                        tokensArray.Set((uint32_t)k, tokenObj);
+                    }
+                    obj.Set("tokens", tokensArray);
+                }
+
+                segCb.Call({obj});
+            }
+        }
+        segment_callback_ref_.Reset();
+
         Napi::Object resultObj = Napi::Object::New(Env());
 
         if (!result_.language.empty()) {
@@ -637,8 +669,6 @@ public:
     }
 
     void OnNewSegment(whisper_context* ctx, int n_new) {
-        if (!segment_tsfn_) return;
-
         const int n_segments = whisper_full_n_segments(ctx);
         const int s0 = n_segments - n_new;
 
@@ -647,19 +677,19 @@ public:
             const int64_t t1 = whisper_full_get_segment_t1(ctx, i);
             const char* text = whisper_full_get_segment_text(ctx, i);
 
-            std::string start_ts = to_timestamp(t0, params_.comma_in_time);
-            std::string end_ts = to_timestamp(t1, params_.comma_in_time);
-            std::string segment_text = text ? text : "";
-            int segment_index = i;
+            streamed_segment seg;
+            seg.start = to_timestamp(t0, params_.comma_in_time);
+            seg.end = to_timestamp(t1, params_.comma_in_time);
+            seg.text = text ? text : "";
+            seg.segment_index = i;
 
-            std::vector<std::tuple<std::string, float, int64_t, int64_t, int64_t>> tokens;
             if (params_.token_timestamps) {
                 const int n_tokens = whisper_full_n_tokens(ctx, i);
                 for (int j = 0; j < n_tokens; j++) {
                     const char* token_text = whisper_full_get_token_text(ctx, i, j);
                     float token_prob = whisper_full_get_token_p(ctx, i, j);
                     whisper_token_data token_data = whisper_full_get_token_data(ctx, i, j);
-                    tokens.push_back({
+                    seg.tokens.push_back({
                         token_text ? token_text : "",
                         token_prob,
                         token_data.t0,
@@ -669,31 +699,7 @@ public:
                 }
             }
 
-            auto callback = [start_ts, end_ts, segment_text, segment_index, tokens, this](Napi::Env env, Napi::Function jsCallback) {
-                Napi::Object segment = Napi::Object::New(env);
-                segment.Set("start", Napi::String::New(env, start_ts));
-                segment.Set("end", Napi::String::New(env, end_ts));
-                segment.Set("text", Napi::String::New(env, segment_text));
-                segment.Set("segment_index", Napi::Number::New(env, segment_index));
-                segment.Set("is_partial", Napi::Boolean::New(env, false));
-
-                if (!tokens.empty()) {
-                    Napi::Array tokensArray = Napi::Array::New(env, tokens.size());
-                    for (size_t k = 0; k < tokens.size(); k++) {
-                        Napi::Object tokenObj = Napi::Object::New(env);
-                        tokenObj.Set("text", Napi::String::New(env, std::get<0>(tokens[k])));
-                        tokenObj.Set("probability", Napi::Number::New(env, std::get<1>(tokens[k])));
-                        tokenObj.Set("t0", Napi::Number::New(env, std::get<2>(tokens[k])));
-                        tokenObj.Set("t1", Napi::Number::New(env, std::get<3>(tokens[k])));
-                        tokenObj.Set("t_dtw", Napi::Number::New(env, std::get<4>(tokens[k])));
-                        tokensArray.Set((uint32_t)k, tokenObj);
-                    }
-                    segment.Set("tokens", tokensArray);
-                }
-
-                jsCallback.Call({segment});
-            };
-            segment_tsfn_.BlockingCall(callback);
+            streamed_segments_.push_back(std::move(seg));
         }
     }
 
@@ -703,7 +709,9 @@ private:
     transcribe_result result_;
     Napi::Env env_;
     Napi::ThreadSafeFunction tsfn_;
-    Napi::ThreadSafeFunction segment_tsfn_;
+    bool has_segment_callback_ = false;
+    Napi::FunctionReference segment_callback_ref_;
+    std::vector<streamed_segment> streamed_segments_;
 };
 
 // ============================================================================
