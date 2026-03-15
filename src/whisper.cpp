@@ -3328,42 +3328,7 @@ static std::vector<whisper_vocab::id> tokenize(const whisper_vocab & vocab, cons
 // interface implementation
 //
 
-#ifdef WHISPER_USE_COREML
-// replace .bin with -encoder.mlmodelc
-static std::string whisper_get_coreml_path_encoder(std::string path_bin) {
-    auto pos = path_bin.rfind('.');
-    if (pos != std::string::npos) {
-        path_bin = path_bin.substr(0, pos);
-    }
-
-    // match "-qx_x"
-    pos = path_bin.rfind('-');
-    if (pos != std::string::npos) {
-        auto sub = path_bin.substr(pos);
-        if (sub.size() == 5 && sub[1] == 'q' && sub[3] == '_') {
-            path_bin = path_bin.substr(0, pos);
-        }
-    }
-
-    path_bin += "-encoder.mlmodelc";
-
-    return path_bin;
-}
-#endif
-
 #ifdef WHISPER_USE_OPENVINO
-// replace .bin with-encoder-openvino.xml
-static std::string whisper_openvino_get_path_encoder(std::string path_bin) {
-    auto pos = path_bin.rfind('.');
-    if (pos != std::string::npos) {
-        path_bin = path_bin.substr(0, pos);
-    }
-
-    path_bin += "-encoder-openvino.xml";
-
-    return path_bin;
-}
-
 static std::string whisper_openvino_get_path_cache(std::string path_bin) {
     auto pos = path_bin.rfind('.');
     if (pos != std::string::npos) {
@@ -3443,20 +3408,21 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
     }
 
 #ifdef WHISPER_USE_COREML
-    // Only load Core ML model if use_coreml is enabled at runtime
     if (ctx->params.use_coreml) {
-        const auto path_coreml = whisper_get_coreml_path_encoder(ctx->path_model);
-
-        WHISPER_LOG_INFO("%s: loading Core ML model from '%s'\n", __func__, path_coreml.c_str());
-        WHISPER_LOG_INFO("%s: first run on a device may take a while ...\n", __func__);
-
-        state->ctx_coreml = whisper_coreml_init(path_coreml.c_str());
-        if (!state->ctx_coreml) {
-            WHISPER_LOG_ERROR("%s: failed to load Core ML model from '%s'\n", __func__, path_coreml.c_str());
-#ifndef WHISPER_COREML_ALLOW_FALLBACK
+        if (!ctx->params.coreml_model_path || ctx->params.coreml_model_path[0] == '\0') {
+            WHISPER_LOG_ERROR("%s: use_coreml is true but coreml_model_path is not set\n", __func__);
             whisper_free_state(state);
             return nullptr;
-#endif
+        }
+
+        WHISPER_LOG_INFO("%s: loading Core ML model from '%s'\n", __func__, ctx->params.coreml_model_path);
+        WHISPER_LOG_INFO("%s: first run on a device may take a while ...\n", __func__);
+
+        state->ctx_coreml = whisper_coreml_init(ctx->params.coreml_model_path);
+        if (!state->ctx_coreml) {
+            WHISPER_LOG_ERROR("%s: failed to load Core ML model from '%s'\n", __func__, ctx->params.coreml_model_path);
+            whisper_free_state(state);
+            return nullptr;
         } else {
             WHISPER_LOG_INFO("%s: Core ML model loaded\n", __func__);
         }
@@ -3567,22 +3533,15 @@ int whisper_ctx_init_openvino_encoder_with_state(
 
     return 1;
 #else
-    if (!model_path && ctx->path_model.empty()) {
-        WHISPER_LOG_ERROR("%s: model_path is nullptr, and ctx has no model_path set.\n", __func__);
+    if (!model_path || model_path[0] == '\0') {
+        WHISPER_LOG_ERROR("%s: model_path is required\n", __func__);
         return 1;
     }
 
-    std::string path_encoder;
-    if (!model_path) {
-        //if model_path is not set, attempt to find it in the same directory as ggml-<model>.bin model
-        path_encoder = whisper_openvino_get_path_encoder(ctx->path_model);
-    } else {
-        path_encoder = model_path;
-    }
+    std::string path_encoder = model_path;
 
     std::string path_cache;
     if (!cache_dir) {
-        //if cache_dir is not set, set it as a dir residing next to ggml-<model>.bin
         path_cache = whisper_openvino_get_path_cache(ctx->path_model);
     } else {
         path_cache = cache_dir;
@@ -3618,6 +3577,7 @@ struct whisper_context_params whisper_context_default_params() {
         /*.gpu_device           =*/ 0,
 
         /*.use_coreml           =*/ false,
+        /*.coreml_model_path    =*/ nullptr,
 
         /*.dtw_token_timestamps =*/ false,
         /*.dtw_aheads_preset    =*/ WHISPER_AHEADS_NONE,

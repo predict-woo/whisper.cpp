@@ -120,8 +120,10 @@ extern "C" {
         int   gpu_device;  // CUDA device
 
         // Core ML support (macOS only)
-        // When true and Core ML is available, uses Apple Neural Engine for encoder
+        // When true, loads Core ML encoder from coreml_model_path.
+        // coreml_model_path must be non-null when use_coreml is true.
         bool  use_coreml;
+        const char * coreml_model_path;
 
         // [EXPERIMENTAL] Token-level timestamps with DTW
         bool dtw_token_timestamps;
